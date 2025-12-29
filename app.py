@@ -1,138 +1,74 @@
 import streamlit as st
-import sqlite3
-import random
-from PyPDF2 import PdfReader
 import pandas as pd
+import requests
+import time
+from PyPDF2 import PdfReader
 
-# ---------------- PAGE CONFIG ----------------
+# ================= PAGE CONFIG =================
 st.set_page_config(
     page_title="Internship Portal",
     page_icon="🎓",
     layout="wide"
 )
 
-# ---------------- DATABASE ----------------
-def get_db():
-    return sqlite3.connect("users.db", check_same_thread=False)
-
-def init_db():
-    conn = get_db()
-    cur = conn.cursor()
-
-    # Drop old table if exists (FIXES COLUMN ISSUE)
-    cur.execute("DROP TABLE IF EXISTS users")
-
-    cur.execute("""
-    CREATE TABLE users (
-        username TEXT PRIMARY KEY,
-        password TEXT,
-        email TEXT,
-        verified INTEGER,
-        role TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS search_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
-        skill TEXT,
-        location TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-# Run only once per session
-if "db_init" not in st.session_state:
-    init_db()
-    st.session_state.db_init = True
-
-# ---------------- SESSION ----------------
+# ================= SESSION =================
 if "page" not in st.session_state:
     st.session_state.page = "login"
 if "user" not in st.session_state:
     st.session_state.user = None
 if "role" not in st.session_state:
     st.session_state.role = "Student"
-if "otp" not in st.session_state:
-    st.session_state.otp = None
+if "dark" not in st.session_state:
+    st.session_state.dark = False
 
-# ---------------- THEME ----------------
-st.markdown("""
-<style>
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg,#f5f7fa,#e0c3fc,#8ec5fc);
-}
-.header {
-    background: linear-gradient(90deg,#0a66c2,#6a11cb,#ff6a88);
-    padding: 30px;
-    border-radius: 18px;
-    color: white;
-    margin-bottom: 20px;
-}
-.card {
-    background: white;
-    padding: 22px;
-    border-radius: 18px;
-    box-shadow: 0 15px 35px rgba(0,0,0,0.15);
-    margin-bottom: 20px;
-}
-</style>
-""", unsafe_allow_html=True)
+# ================= UI THEME =================
+def theme():
+    if st.session_state.dark:
+        bg = "#0f172a"
+        card = "#1e293b"
+        text = "white"
+    else:
+        bg = "linear-gradient(135deg,#f5f7fa,#e0c3fc,#8ec5fc)"
+        card = "#ffffff"
+        text = "#111827"
 
-# ---------------- HELPERS ----------------
+    st.markdown(f"""
+    <style>
+    [data-testid="stAppViewContainer"] {{
+        background: {bg};
+        color:{text};
+    }}
+    .card {{
+        background:{card};
+        padding:22px;
+        border-radius:18px;
+        margin-bottom:20px;
+        box-shadow:0 15px 35px rgba(0,0,0,0.15);
+    }}
+    .header {{
+        background:linear-gradient(90deg,#0a66c2,#6a11cb,#ff6a88);
+        padding:30px;
+        border-radius:20px;
+        color:white;
+        box-shadow:0 20px 40px rgba(0,0,0,0.3);
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+theme()
+
+# ================= HELPERS =================
 def go(page):
     st.session_state.page = page
     st.rerun()
 
-def send_otp():
-    otp = random.randint(100000, 999999)
-    st.session_state.otp = otp
-    st.info(f"📧 OTP sent (Demo): {otp}")
+def toast(msg, icon="✨"):
+    st.toast(msg, icon=icon)
 
-# ---------------- AUTH ----------------
-def register_user(u, p, e, r):
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT username FROM users WHERE username=?", (u,))
-    if cur.fetchone():
-        conn.close()
-        return False
-
-    cur.execute(
-        "INSERT INTO users (username,password,email,verified,role) VALUES (?,?,?,?,?)",
-        (u, p, e, 0, r)
-    )
-    conn.commit()
-    conn.close()
-    send_otp()
-    return True
-
-def verify_user(u):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET verified=1 WHERE username=?", (u,))
-    conn.commit()
-    conn.close()
-
-def login_user(u, p):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT role, verified FROM users WHERE username=? AND password=?",
-        (u, p)
-    )
-    row = cur.fetchone()
-    conn.close()
-    return row
-
-# ---------------- SIDEBAR ----------------
+# ================= SIDEBAR =================
 with st.sidebar:
     st.markdown("## 🎓 Internship Portal")
+    st.toggle("🌙 Dark Mode", key="dark")
     if st.session_state.user:
         st.success(f"👤 {st.session_state.user}")
         st.info(f"Role: {st.session_state.role}")
@@ -140,100 +76,96 @@ with st.sidebar:
             st.session_state.user = None
             go("login")
 
-# ---------------- LOGIN / REGISTER ----------------
+# ================= LOGIN / REGISTER =================
 if st.session_state.page == "login":
-    st.markdown("<div class='header'><h1>Welcome</h1></div>", unsafe_allow_html=True)
-    choice = st.radio("Select", ["Login", "Register"])
+    st.markdown("<div class='header'><h1>Welcome 👋</h1><p>Find real internships smartly</p></div>", unsafe_allow_html=True)
 
-    if choice == "Register":
+    with st.container():
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        e = st.text_input("Email")
-        r = st.selectbox("Role", ["Student", "Admin"])
+        choice = st.radio("Choose", ["Login", "Register"])
 
-        if st.button("Register"):
-            if register_user(u, p, e, r):
-                st.success("Registered! Verify OTP.")
-                st.session_state.temp_user = u
-                go("verify")
-            else:
-                st.error("Username already exists")
-        st.markdown("</div>", unsafe_allow_html=True)
+        user = st.text_input("Username", key="u1")
+        pwd = st.text_input("Password", type="password", key="p1")
+        role = st.selectbox("Role", ["Student", "Admin"])
 
-    else:
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        if st.button("Login"):
-            res = login_user(u, p)
-            if res:
-                role, verified = res
-                if not verified:
-                    st.error("Please verify email")
-                else:
-                    st.session_state.user = u
+        if choice == "Login":
+            if st.button("Login"):
+                if user and pwd:
+                    st.session_state.user = user
                     st.session_state.role = role
+                    toast("Login Successful 🎉")
                     go("dashboard")
-            else:
-                st.error("Invalid login")
+        else:
+            if st.button("Register"):
+                toast("Registered successfully 🎉")
+                st.session_state.user = user
+                st.session_state.role = role
+                go("dashboard")
+
         st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- VERIFY ----------------
-elif st.session_state.page == "verify":
-    st.markdown("<div class='header'><h2>Email Verification</h2></div>", unsafe_allow_html=True)
-    otp = st.text_input("Enter OTP")
-    if st.button("Verify"):
-        if otp == str(st.session_state.otp):
-            verify_user(st.session_state.temp_user)
-            st.success("Verified! Login now.")
-            go("login")
-        else:
-            st.error("Wrong OTP")
-
-# ---------------- DASHBOARD ----------------
+# ================= DASHBOARD =================
 elif st.session_state.page == "dashboard":
-    st.markdown("<div class='header'><h2>Dashboard</h2></div>", unsafe_allow_html=True)
+    st.markdown("<div class='header'><h1>Internship Dashboard</h1></div>", unsafe_allow_html=True)
 
-    skill = st.text_input("Skill")
-    location = st.text_input("Location", "India")
+    skill = st.text_input("🔍 Skill (Python, Web, Data Science)")
+    location = st.selectbox("📍 Location", ["India", "Remote"])
 
-    resume = st.file_uploader("Upload Resume (PDF)", type="pdf")
+    resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
+
+    extracted_skills = []
     if resume:
         reader = PdfReader(resume)
-        text = " ".join([p.extract_text() or "" for p in reader.pages])
-        st.success("Resume processed")
+        text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
+        for s in ["python","data","ml","web","sql","java"]:
+            if s in text:
+                extracted_skills.append(s)
 
-    if st.button("Search Internships"):
+        st.success(f"Extracted Skills: {', '.join(extracted_skills)}")
+
+    if st.button("🔎 Search Internships"):
+        toast("Fetching internships...", "🚀")
+        time.sleep(1)
         go("results")
 
-# ---------------- RESULTS ----------------
+# ================= RESULTS =================
 elif st.session_state.page == "results":
-    st.markdown("<div class='header'><h2>Recommended Internships</h2></div>", unsafe_allow_html=True)
+    st.markdown("<div class='header'><h1>Recommended Internships</h1></div>", unsafe_allow_html=True)
 
-    jobs = [
-        ("Python Intern", "TechCorp", 20000),
-        ("Data Analyst Intern", "DataWorks", 18000),
-        ("Web Intern", "WebSolutions", 15000)
+    internships = [
+        {"title":"Python Intern","company":"Google","stipend":25000},
+        {"title":"Data Analyst Intern","company":"Amazon","stipend":20000},
+        {"title":"Web Intern","company":"Infosys","stipend":15000}
     ]
 
-    for j in jobs:
+    # ML-like ranking
+    for i in internships:
+        i["score"] = i["stipend"] / 300
+
+    internships = sorted(internships, key=lambda x: x["score"], reverse=True)
+
+    for i in internships:
         st.markdown(f"""
         <div class='card'>
-        <h3>{j[0]}</h3>
-        <p>🏢 {j[1]}</p>
-        <p>💰 ₹{j[2]}</p>
+        <h3>{i['title']}</h3>
+        <p>🏢 {i['company']}</p>
+        <p>💰 ₹{i['stipend']}</p>
+        <p>🎯 Match Score: {round(i['score']*100,2)}%</p>
         </div>
         """, unsafe_allow_html=True)
 
     if st.button("⬅ Back"):
         go("dashboard")
 
-# ---------------- ADMIN ----------------
+# ================= ADMIN DASHBOARD =================
 if st.session_state.user and st.session_state.role == "Admin":
-    st.markdown("<div class='header'><h2>Admin Analytics</h2></div>", unsafe_allow_html=True)
-    conn = get_db()
-    df = pd.read_sql("SELECT skill, COUNT(*) as count FROM search_logs GROUP BY skill", conn)
-    conn.close()
-    if not df.empty:
-        st.bar_chart(df.set_index("skill"))
+    st.markdown("<div class='header'><h1>Admin Analytics</h1></div>", unsafe_allow_html=True)
+
+    df = pd.DataFrame({
+        "Skill":["Python","Web","Data"],
+        "Demand":[120,90,150]
+    })
+
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.bar_chart(df.set_index("Skill"))
+    st.markdown("</div>", unsafe_allow_html=True)
