@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import time
 import requests
+import time
 from PyPDF2 import PdfReader
 
 # =====================================================
@@ -26,11 +26,31 @@ if "dark" not in st.session_state:
     st.session_state.dark = False
 if "location" not in st.session_state:
     st.session_state.location = None
-
-# Applied jobs structure:
-# { job_id : {"student": username, "status": "Pending"} }
 if "applications" not in st.session_state:
     st.session_state.applications = {}
+
+# =====================================================
+# LOAD DATASET
+# =====================================================
+@st.cache_data
+def load_dataset():
+    df = pd.read_csv("adzuna_internships_raw.csv")
+    df.columns = df.columns.str.lower()
+
+    # REQUIRED COLUMNS HANDLING
+    if "title" not in df.columns:
+        df["title"] = df["job_title"]
+    if "company" not in df.columns:
+        df["company"] = df["company_name"]
+    if "location" not in df.columns:
+        df["location"] = df["city"]
+
+    if "stipend" not in df.columns:
+        df["stipend"] = 15000  # fallback stipend
+
+    return df
+
+data = load_dataset()
 
 # =====================================================
 # LIVE LOCATION (IP BASED)
@@ -73,7 +93,6 @@ def apply_theme():
         border-radius:20px;
         color:white;
         margin-bottom:25px;
-        box-shadow:0 20px 40px rgba(0,0,0,0.3);
     }}
     .card {{
         background:{card};
@@ -81,11 +100,6 @@ def apply_theme():
         border-radius:18px;
         margin-bottom:20px;
         box-shadow:0 15px 35px rgba(0,0,0,0.15);
-        animation:fade 0.6s ease;
-    }}
-    @keyframes fade {{
-        from {{opacity:0; transform:translateY(20px);}}
-        to {{opacity:1; transform:translateY(0);}}
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -102,10 +116,10 @@ def go(page):
 def toast(msg, icon="✨"):
     st.toast(msg, icon=icon)
 
-def prototype_matching_score(stipend, location_match=True):
+def compute_match_score(stipend, location_match):
     stipend_score = stipend / 30000
     location_score = 1 if location_match else 0.6
-    return round((0.7 * stipend_score + 0.3 * location_score) * 100, 2)
+    return round((0.6 * stipend_score + 0.4 * location_score) * 100, 2)
 
 # =====================================================
 # SIDEBAR
@@ -113,7 +127,6 @@ def prototype_matching_score(stipend, location_match=True):
 with st.sidebar:
     st.markdown("## 🎓 Internship Portal")
     st.toggle("🌙 Dark Mode", key="dark")
-    st.markdown("---")
     if st.session_state.user:
         st.success(f"👤 {st.session_state.user}")
         st.info(f"Role: {st.session_state.role}")
@@ -122,7 +135,7 @@ with st.sidebar:
             go("login")
 
 # =====================================================
-# LOGIN / REGISTER
+# LOGIN
 # =====================================================
 if st.session_state.page == "login":
     st.markdown("""
@@ -133,20 +146,18 @@ if st.session_state.page == "login":
     """, unsafe_allow_html=True)
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    mode = st.radio("Choose", ["Login", "Register"])
-    username = st.text_input("👤 Username")
-    password = st.text_input("🔑 Password", type="password")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
     role = st.selectbox("Role", ["Student", "Admin"])
 
-    if st.button(mode):
+    if st.button("Login"):
         if username and password:
             st.session_state.user = username
             st.session_state.role = role
             st.session_state.location = get_live_location()
-            toast(f"{mode} successful 🎉")
             go("dashboard")
         else:
-            st.error("Fill all fields")
+            st.error("Enter credentials")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =====================================================
@@ -158,110 +169,93 @@ elif st.session_state.page == "dashboard":
     st.markdown("""
     <div class="header">
         <h1>🚀 Internship Dashboard</h1>
-        <p>Search • Match • Apply</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.info(f"📍 Detected Location: {loc['city']}, {loc['country']}")
 
-    applied_count = sum(
-        1 for a in st.session_state.applications.values()
-        if a["student"] == st.session_state.user
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📨 Applications", applied_count)
-    c2.metric("💰 Avg Stipend", "₹18,000")
-    c3.metric("🔥 Top Skill", "Python")
-    c4.metric("🎯 Avg Match", "86%")
-
-    skill = st.text_input("🔎 Skill")
     resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
-
     if resume:
         reader = PdfReader(resume)
         text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
         skills = [s for s in ["python","data","ml","web","sql","java"] if s in text]
         st.success(f"Extracted Skills: {', '.join(skills)}")
 
-    if st.button("Search Internships 🚀"):
+    if st.button("Search Internships"):
         go("results")
 
 # =====================================================
-# RESULTS + APPLY (LIVE LOCATION USED HERE)
+# RESULTS (DATASET + LIVE LOCATION)
 # =====================================================
 elif st.session_state.page == "results":
     loc = st.session_state.location
+    user_city = loc["city"].lower()
 
     st.markdown("""
     <div class="header">
         <h1>🎯 Recommended Internships</h1>
-        <p>Ranked using live location + relevance score</p>
+        <p>Dataset-driven + Location-aware</p>
     </div>
     """, unsafe_allow_html=True)
 
-    internships = [
-        {"title":"Python Intern","company":"Google","stipend":25000,"city":"Bangalore"},
-        {"title":"Data Analyst","company":"Amazon","stipend":20000,"city":"Hyderabad"},
-        {"title":"Web Intern","company":"Infosys","stipend":15000,"city":"Chennai"},
-    ]
+    internships = data.to_dict("records")
 
+    ranked = []
     for i in internships:
-        location_match = loc["city"].lower() in i["city"].lower()
-        i["score"] = prototype_matching_score(i["stipend"], location_match)
+        city = str(i.get("location", "")).lower()
+        stipend = int(i.get("stipend", 15000))
+        location_match = user_city in city
+        score = compute_match_score(stipend, location_match)
+        i["score"] = score
+        ranked.append(i)
 
-    internships = sorted(internships, key=lambda x: x["score"], reverse=True)
+    ranked = sorted(ranked, key=lambda x: x["score"], reverse=True)[:10]
 
-    for i in internships:
+    for i in ranked:
         job_id = f"{i['title']}@{i['company']}"
 
         st.markdown(f"""
         <div class="card">
             <h3>{i['title']}</h3>
             <p>🏢 {i['company']}</p>
-            <p>📍 {i['city']}</p>
-            <p>💰 ₹{i['stipend']}</p>
+            <p>📍 {i.get('location','N/A')}</p>
+            <p>💰 ₹{i.get('stipend',15000)}</p>
             <p>🎯 Match Score: {i['score']}%</p>
         </div>
         """, unsafe_allow_html=True)
 
         if job_id in st.session_state.applications:
-            status = st.session_state.applications[job_id]["status"]
-            st.info(f"📌 Status: {status}")
+            st.info(f"📌 Status: {st.session_state.applications[job_id]['status']}")
         else:
-            if st.button(f"Apply Now – {i['title']}", key=job_id):
+            if st.button(f"Apply – {i['title']}", key=job_id):
                 st.session_state.applications[job_id] = {
                     "student": st.session_state.user,
                     "status": "Pending"
                 }
-                toast("Application submitted 🎉", "📨")
+                toast("Application submitted 🎉")
 
     if st.button("⬅ Back"):
         go("dashboard")
 
 # =====================================================
-# ADMIN VIEW – APPLIED STUDENTS
+# ADMIN VIEW
 # =====================================================
 if st.session_state.user and st.session_state.role == "Admin":
     st.markdown("""
     <div class="header">
-        <h1>📊 Admin – Applications Review</h1>
+        <h1>📊 Admin – Applications</h1>
     </div>
     """, unsafe_allow_html=True)
 
-    if not st.session_state.applications:
-        st.info("No applications yet")
-    else:
-        for job_id, data in st.session_state.applications.items():
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.write(f"📌 Internship: {job_id}")
-            st.write(f"👤 Student: {data['student']}")
-
-            new_status = st.selectbox(
-                "Update Status",
-                ["Pending", "Selected"],
-                index=["Pending","Selected"].index(data["status"]),
-                key=job_id
-            )
-            st.session_state.applications[job_id]["status"] = new_status
-            st.markdown("</div>", unsafe_allow_html=True)
+    for job_id, datax in st.session_state.applications.items():
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.write(f"Internship: {job_id}")
+        st.write(f"Student: {datax['student']}")
+        status = st.selectbox(
+            "Status",
+            ["Pending", "Selected"],
+            index=["Pending","Selected"].index(datax["status"]),
+            key=job_id
+        )
+        st.session_state.applications[job_id]["status"] = status
+        st.markdown("</div>", unsafe_allow_html=True)
