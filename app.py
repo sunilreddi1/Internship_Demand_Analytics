@@ -3,14 +3,18 @@ import pandas as pd
 import time
 from PyPDF2 import PdfReader
 
-# ================= PAGE CONFIG =================
+# =====================================================
+# PAGE CONFIG
+# =====================================================
 st.set_page_config(
-    page_title="Internship Portal",
+    page_title="Internship Demand & Recommendation Portal",
     page_icon="🎓",
     layout="wide"
 )
 
-# ================= SESSION =================
+# =====================================================
+# SESSION STATE
+# =====================================================
 if "page" not in st.session_state:
     st.session_state.page = "login"
 if "user" not in st.session_state:
@@ -20,8 +24,10 @@ if "role" not in st.session_state:
 if "dark" not in st.session_state:
     st.session_state.dark = False
 
-# ================= THEME =================
-def theme():
+# =====================================================
+# THEME (LIGHT / DARK)
+# =====================================================
+def apply_theme():
     if st.session_state.dark:
         bg = "#0f172a"
         card = "#1e293b"
@@ -42,8 +48,8 @@ def theme():
         padding:30px;
         border-radius:20px;
         color:white;
-        box-shadow:0 20px 40px rgba(0,0,0,0.3);
         margin-bottom:25px;
+        box-shadow:0 20px 40px rgba(0,0,0,0.3);
     }}
     .card {{
         background:{card};
@@ -68,9 +74,11 @@ def theme():
     </style>
     """, unsafe_allow_html=True)
 
-theme()
+apply_theme()
 
-# ================= HELPERS =================
+# =====================================================
+# HELPERS
+# =====================================================
 def go(page):
     st.session_state.page = page
     st.rerun()
@@ -78,7 +86,17 @@ def go(page):
 def toast(msg, icon="✨"):
     st.toast(msg, icon=icon)
 
-# ================= SIDEBAR =================
+def prototype_matching_score(stipend, skill_weight=1):
+    """
+    Undergraduate-level prototype scoring function.
+    Simulates regression-style relevance prediction.
+    Can be replaced with a trained ML model in future.
+    """
+    return round((stipend / 30000) * 100 * skill_weight, 2)
+
+# =====================================================
+# SIDEBAR
+# =====================================================
 with st.sidebar:
     st.markdown("## 🎓 Internship Portal")
     st.toggle("🌙 Dark Mode", key="dark")
@@ -89,40 +107,45 @@ with st.sidebar:
         if st.button("🚪 Logout"):
             st.session_state.user = None
             go("login")
-    st.caption("Inspired by LinkedIn & Internshala")
+    st.caption("Prototype-level system (Academic use)")
 
-# ================= LOGIN / REGISTER =================
+# =====================================================
+# LOGIN / REGISTER (DEMO)
+# =====================================================
 if st.session_state.page == "login":
     st.markdown("""
     <div class="header">
         <h1>Welcome 👋</h1>
-        <p>Find internships smarter with AI-style ranking</p>
+        <p>Internship Demand & Recommendation System</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     mode = st.radio("Choose", ["Login", "Register"])
 
-    u = st.text_input("👤 Username")
-    p = st.text_input("🔑 Password", type="password")
-    r = st.selectbox("Role", ["Student", "Admin"])
+    username = st.text_input("👤 Username")
+    password = st.text_input("🔑 Password", type="password")
+    role = st.selectbox("Role", ["Student", "Admin"])
 
     if st.button(mode):
-        if u and p:
-            st.session_state.user = u
-            st.session_state.role = r
+        if username and password:
+            st.session_state.user = username
+            st.session_state.role = role
             toast(f"{mode} successful 🎉")
             go("dashboard")
         else:
-            st.error("Fill all fields")
+            st.error("Please fill all fields")
+
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ================= DASHBOARD =================
+# =====================================================
+# DASHBOARD
+# =====================================================
 elif st.session_state.page == "dashboard":
     st.markdown("""
     <div class="header">
         <h1>🚀 Internship Dashboard</h1>
-        <p>Search • Rank • Analyze Opportunities</p>
+        <p>Search • Match • Analyze Opportunities</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -144,51 +167,54 @@ elif st.session_state.page == "dashboard":
         location = st.selectbox("📍 Location", ["India", "Remote"])
 
         resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
-        extracted = []
+        extracted_skills = []
 
         if resume:
             reader = PdfReader(resume)
             text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
-            for s in ["python","data","ml","web","sql","java"]:
+            for s in ["python", "data", "ml", "web", "sql", "java"]:
                 if s in text:
-                    extracted.append(s)
-            st.success(f"Extracted Skills: {', '.join(extracted)}")
+                    extracted_skills.append(s)
+            st.success(f"Extracted Skills: {', '.join(extracted_skills)}")
 
         if st.button("Search Internships 🚀"):
-            toast("Fetching internships...", "🔎")
+            toast("Matching internships...", "🔎")
             time.sleep(1)
             go("results")
+
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # RECOMMENDATIONS
+    # RECOMMENDATIONS TAB
     with tab2:
         internships = [
-            ("ML Intern","Microsoft",30000,92),
-            ("Python Intern","Google",25000,88),
-            ("Data Analyst","Amazon",20000,84),
+            ("ML Intern", "Microsoft", 30000, 1.2),
+            ("Python Intern", "Google", 25000, 1.1),
+            ("Data Analyst Intern", "Amazon", 20000, 1.0),
         ]
-        for t,c,s,m in internships:
+
+        for title, company, stipend, weight in internships:
+            score = prototype_matching_score(stipend, weight)
             st.markdown(f"""
-            <div class='card'>
-                <h3>{t}</h3>
-                <p>🏢 {c}</p>
-                <p>💰 ₹{s}</p>
-                <p>🎯 Match Score: {m}%</p>
+            <div class="card">
+                <h3>{title}</h3>
+                <p>🏢 {company}</p>
+                <p>💰 ₹{stipend}</p>
+                <p>🎯 Match Score: {score}%</p>
             </div>
             """, unsafe_allow_html=True)
 
-    # INSIGHTS
+    # INSIGHTS TAB
     with tab3:
         df = pd.DataFrame({
-            "Skill":["Python","Web","Data","AI/ML"],
-            "Demand":[120,90,110,70]
+            "Skill": ["Python", "Web", "Data", "AI/ML"],
+            "Demand": [120, 90, 110, 70]
         })
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.bar_chart(df.set_index("Skill"))
         st.caption("Skill-wise internship demand (demo analytics)")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # COMPANIES
+    # COMPANIES TAB
     with tab4:
         st.markdown("""
         <div class="card">
@@ -203,25 +229,32 @@ elif st.session_state.page == "dashboard":
         </div>
         """, unsafe_allow_html=True)
 
-# ================= RESULTS =================
+    st.caption(
+        "⚠️ This system demonstrates an undergraduate-level predictive prototype. "
+        "Advanced machine learning models can be integrated in future work."
+    )
+
+# =====================================================
+# RESULTS PAGE
+# =====================================================
 elif st.session_state.page == "results":
     st.markdown("""
     <div class="header">
         <h1>🎯 Recommended Internships</h1>
-        <p>Ranked using ML-style scoring</p>
+        <p>Ranked using prototype relevance scoring</p>
     </div>
     """, unsafe_allow_html=True)
 
     internships = [
-        {"title":"Python Intern","company":"Google","stipend":25000},
-        {"title":"Data Analyst","company":"Amazon","stipend":20000},
-        {"title":"Web Intern","company":"Infosys","stipend":15000},
+        {"title": "Python Intern", "company": "Google", "stipend": 25000},
+        {"title": "Data Analyst Intern", "company": "Amazon", "stipend": 20000},
+        {"title": "Web Intern", "company": "Infosys", "stipend": 15000},
     ]
 
     for i in internships:
-        i["score"] = round((i["stipend"]/30000)*100,2)
+        i["score"] = prototype_matching_score(i["stipend"])
 
-    internships = sorted(internships, key=lambda x:x["score"], reverse=True)
+    internships = sorted(internships, key=lambda x: x["score"], reverse=True)
 
     for i in internships:
         st.markdown(f"""
@@ -236,7 +269,9 @@ elif st.session_state.page == "results":
     if st.button("⬅ Back to Dashboard"):
         go("dashboard")
 
-# ================= ADMIN DASHBOARD =================
+# =====================================================
+# ADMIN DASHBOARD
+# =====================================================
 if st.session_state.user and st.session_state.role == "Admin":
     st.markdown("""
     <div class="header">
@@ -245,9 +280,9 @@ if st.session_state.user and st.session_state.role == "Admin":
     """, unsafe_allow_html=True)
 
     df = pd.DataFrame({
-        "Skill":["Python","Web","Data","AI"],
-        "Demand":[140,90,120,80]
+        "Skill": ["Python", "Web", "Data", "AI"],
+        "Demand": [140, 90, 120, 80]
     })
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.bar_chart(df.set_index("Skill"))
-    st.markdown("</div>", unsafe_allow_html=True) 
+    st.markdown("</div>", unsafe_allow_html=True)
