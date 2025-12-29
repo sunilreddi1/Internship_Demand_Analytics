@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
+import requests
 from PyPDF2 import PdfReader
 
 # =====================================================
@@ -23,11 +24,29 @@ if "role" not in st.session_state:
     st.session_state.role = "Student"
 if "dark" not in st.session_state:
     st.session_state.dark = False
+if "location" not in st.session_state:
+    st.session_state.location = None
 
 # Applied jobs structure:
 # { job_id : {"student": username, "status": "Pending"} }
 if "applications" not in st.session_state:
     st.session_state.applications = {}
+
+# =====================================================
+# LIVE LOCATION (IP BASED)
+# =====================================================
+def get_live_location():
+    try:
+        res = requests.get("https://ipapi.co/json/", timeout=5).json()
+        return {
+            "city": res.get("city", "Unknown"),
+            "country": res.get("country_name", "India")
+        }
+    except:
+        return {
+            "city": "Unknown",
+            "country": "India"
+        }
 
 # =====================================================
 # THEME
@@ -83,8 +102,10 @@ def go(page):
 def toast(msg, icon="✨"):
     st.toast(msg, icon=icon)
 
-def prototype_matching_score(stipend):
-    return round((stipend / 30000) * 100, 2)
+def prototype_matching_score(stipend, location_match=True):
+    stipend_score = stipend / 30000
+    location_score = 1 if location_match else 0.6
+    return round((0.7 * stipend_score + 0.3 * location_score) * 100, 2)
 
 # =====================================================
 # SIDEBAR
@@ -121,6 +142,7 @@ if st.session_state.page == "login":
         if username and password:
             st.session_state.user = username
             st.session_state.role = role
+            st.session_state.location = get_live_location()
             toast(f"{mode} successful 🎉")
             go("dashboard")
         else:
@@ -131,12 +153,16 @@ if st.session_state.page == "login":
 # DASHBOARD
 # =====================================================
 elif st.session_state.page == "dashboard":
+    loc = st.session_state.location or get_live_location()
+
     st.markdown("""
     <div class="header">
         <h1>🚀 Internship Dashboard</h1>
         <p>Search • Match • Apply</p>
     </div>
     """, unsafe_allow_html=True)
+
+    st.info(f"📍 Detected Location: {loc['city']}, {loc['country']}")
 
     applied_count = sum(
         1 for a in st.session_state.applications.values()
@@ -150,9 +176,8 @@ elif st.session_state.page == "dashboard":
     c4.metric("🎯 Avg Match", "86%")
 
     skill = st.text_input("🔎 Skill")
-    location = st.selectbox("📍 Location", ["India", "Remote"])
-
     resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
+
     if resume:
         reader = PdfReader(resume)
         text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
@@ -163,24 +188,27 @@ elif st.session_state.page == "dashboard":
         go("results")
 
 # =====================================================
-# RESULTS + APPLY
+# RESULTS + APPLY (LIVE LOCATION USED HERE)
 # =====================================================
 elif st.session_state.page == "results":
+    loc = st.session_state.location
+
     st.markdown("""
     <div class="header">
         <h1>🎯 Recommended Internships</h1>
-        <p>Apply directly from the portal</p>
+        <p>Ranked using live location + relevance score</p>
     </div>
     """, unsafe_allow_html=True)
 
     internships = [
-        {"title":"Python Intern","company":"Google","stipend":25000},
-        {"title":"Data Analyst","company":"Amazon","stipend":20000},
-        {"title":"Web Intern","company":"Infosys","stipend":15000},
+        {"title":"Python Intern","company":"Google","stipend":25000,"city":"Bangalore"},
+        {"title":"Data Analyst","company":"Amazon","stipend":20000,"city":"Hyderabad"},
+        {"title":"Web Intern","company":"Infosys","stipend":15000,"city":"Chennai"},
     ]
 
     for i in internships:
-        i["score"] = prototype_matching_score(i["stipend"])
+        location_match = loc["city"].lower() in i["city"].lower()
+        i["score"] = prototype_matching_score(i["stipend"], location_match)
 
     internships = sorted(internships, key=lambda x: x["score"], reverse=True)
 
@@ -191,6 +219,7 @@ elif st.session_state.page == "results":
         <div class="card">
             <h3>{i['title']}</h3>
             <p>🏢 {i['company']}</p>
+            <p>📍 {i['city']}</p>
             <p>💰 ₹{i['stipend']}</p>
             <p>🎯 Match Score: {i['score']}%</p>
         </div>
@@ -234,6 +263,5 @@ if st.session_state.user and st.session_state.role == "Admin":
                 index=["Pending","Selected"].index(data["status"]),
                 key=job_id
             )
-
             st.session_state.applications[job_id]["status"] = new_status
             st.markdown("</div>", unsafe_allow_html=True)
