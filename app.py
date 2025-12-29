@@ -1,18 +1,17 @@
 import streamlit as st
 import sqlite3
 import random
-import time
 from PyPDF2 import PdfReader
 import pandas as pd
 
-# ================= PAGE CONFIG =================
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(
     page_title="Internship Portal",
     page_icon="🎓",
     layout="wide"
 )
 
-# ================= DATABASE =================
+# ---------------- DATABASE ----------------
 def get_db():
     return sqlite3.connect("users.db", check_same_thread=False)
 
@@ -20,8 +19,11 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
 
+    # Drop old table if exists (FIXES COLUMN ISSUE)
+    cur.execute("DROP TABLE IF EXISTS users")
+
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
+    CREATE TABLE users (
         username TEXT PRIMARY KEY,
         password TEXT,
         email TEXT,
@@ -43,9 +45,12 @@ def init_db():
     conn.commit()
     conn.close()
 
-init_db()
+# Run only once per session
+if "db_init" not in st.session_state:
+    init_db()
+    st.session_state.db_init = True
 
-# ================= SESSION =================
+# ---------------- SESSION ----------------
 if "page" not in st.session_state:
     st.session_state.page = "login"
 if "user" not in st.session_state:
@@ -54,105 +59,80 @@ if "role" not in st.session_state:
     st.session_state.role = "Student"
 if "otp" not in st.session_state:
     st.session_state.otp = None
-if "pending_email" not in st.session_state:
-    st.session_state.pending_email = None
-if "dark" not in st.session_state:
-    st.session_state.dark = False
 
-# ================= THEME =================
-def apply_theme():
-    if st.session_state.dark:
-        bg = "#0f172a"
-        card = "#1e293b"
-        text = "#ffffff"
-    else:
-        bg = "linear-gradient(135deg,#f5f7fa,#e0c3fc,#8ec5fc)"
-        card = "#ffffff"
-        text = "#111827"
+# ---------------- THEME ----------------
+st.markdown("""
+<style>
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg,#f5f7fa,#e0c3fc,#8ec5fc);
+}
+.header {
+    background: linear-gradient(90deg,#0a66c2,#6a11cb,#ff6a88);
+    padding: 30px;
+    border-radius: 18px;
+    color: white;
+    margin-bottom: 20px;
+}
+.card {
+    background: white;
+    padding: 22px;
+    border-radius: 18px;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+    margin-bottom: 20px;
+}
+</style>
+""", unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <style>
-    [data-testid="stAppViewContainer"] {{
-        background: {bg};
-        color: {text};
-    }}
-    .header {{
-        background: linear-gradient(90deg,#0a66c2,#6a11cb,#ff6a88);
-        padding: 30px;
-        border-radius: 20px;
-        color: white;
-        margin-bottom: 20px;
-    }}
-    .card {{
-        background: {card};
-        padding: 22px;
-        border-radius: 18px;
-        box-shadow: 0 15px 35px rgba(0,0,0,0.15);
-        margin-bottom: 20px;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-apply_theme()
-
-# ================= HELPERS =================
+# ---------------- HELPERS ----------------
 def go(page):
     st.session_state.page = page
     st.rerun()
 
-def send_otp(email):
+def send_otp():
     otp = random.randint(100000, 999999)
     st.session_state.otp = otp
-    st.session_state.pending_email = email
-    st.info(f"📧 Verification email sent to {email} (OTP: {otp})")
+    st.info(f"📧 OTP sent (Demo): {otp}")
 
-# ================= AUTH FUNCTIONS =================
-def register_user(username, password, email, role):
+# ---------------- AUTH ----------------
+def register_user(u, p, e, r):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT * FROM users WHERE username=?", (username,))
+    cur.execute("SELECT username FROM users WHERE username=?", (u,))
     if cur.fetchone():
         conn.close()
         return False
 
     cur.execute(
-        "INSERT INTO users VALUES (?,?,?,?,?)",
-        (username, password, email, 0, role)
+        "INSERT INTO users (username,password,email,verified,role) VALUES (?,?,?,?,?)",
+        (u, p, e, 0, r)
     )
     conn.commit()
     conn.close()
-    send_otp(email)
+    send_otp()
     return True
 
-def verify_user(otp_entered):
-    if st.session_state.otp == otp_entered:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE users SET verified=1 WHERE email=?",
-            (st.session_state.pending_email,)
-        )
-        conn.commit()
-        conn.close()
-        return True
-    return False
+def verify_user(u):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET verified=1 WHERE username=?", (u,))
+    conn.commit()
+    conn.close()
 
-def login_user(username, password):
+def login_user(u, p):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         "SELECT role, verified FROM users WHERE username=? AND password=?",
-        (username, password)
+        (u, p)
     )
     row = cur.fetchone()
     conn.close()
     return row
 
-# ================= SIDEBAR =================
+# ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.markdown("## 🎓 Internship Portal")
-    st.toggle("🌙 Dark Mode", key="dark")
     if st.session_state.user:
         st.success(f"👤 {st.session_state.user}")
         st.info(f"Role: {st.session_state.role}")
@@ -160,116 +140,96 @@ with st.sidebar:
             st.session_state.user = None
             go("login")
 
-# ================= LOGIN / REGISTER =================
+# ---------------- LOGIN / REGISTER ----------------
 if st.session_state.page == "login":
-    st.markdown("<div class='header'><h1>Welcome</h1><p>Login or Register</p></div>", unsafe_allow_html=True)
-
-    choice = st.radio("Choose", ["Login", "Register"])
+    st.markdown("<div class='header'><h1>Welcome</h1></div>", unsafe_allow_html=True)
+    choice = st.radio("Select", ["Login", "Register"])
 
     if choice == "Register":
-        with st.container():
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            u = st.text_input("Username")
-            p = st.text_input("Password", type="password")
-            e = st.text_input("Email")
-            r = st.selectbox("Role", ["Student", "Admin"])
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        e = st.text_input("Email")
+        r = st.selectbox("Role", ["Student", "Admin"])
 
-            if st.button("Register"):
-                if register_user(u, p, e, r):
-                    st.success("Registered! Verify your email.")
-                    go("verify")
-                else:
-                    st.error("Username already exists")
-            st.markdown("</div>", unsafe_allow_html=True)
+        if st.button("Register"):
+            if register_user(u, p, e, r):
+                st.success("Registered! Verify OTP.")
+                st.session_state.temp_user = u
+                go("verify")
+            else:
+                st.error("Username already exists")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     else:
-        with st.container():
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            u = st.text_input("Username")
-            p = st.text_input("Password", type="password")
-
-            if st.button("Login"):
-                res = login_user(u, p)
-                if res:
-                    role, verified = res
-                    if not verified:
-                        st.error("Email not verified")
-                    else:
-                        st.session_state.user = u
-                        st.session_state.role = role
-                        go("dashboard")
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        if st.button("Login"):
+            res = login_user(u, p)
+            if res:
+                role, verified = res
+                if not verified:
+                    st.error("Please verify email")
                 else:
-                    st.error("Invalid credentials")
-            st.markdown("</div>", unsafe_allow_html=True)
+                    st.session_state.user = u
+                    st.session_state.role = role
+                    go("dashboard")
+            else:
+                st.error("Invalid login")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-# ================= EMAIL VERIFICATION =================
+# ---------------- VERIFY ----------------
 elif st.session_state.page == "verify":
     st.markdown("<div class='header'><h2>Email Verification</h2></div>", unsafe_allow_html=True)
-    otp = st.text_input("Enter OTP", type="password")
+    otp = st.text_input("Enter OTP")
     if st.button("Verify"):
-        if verify_user(int(otp)):
-            st.success("Email verified! Login now.")
+        if otp == str(st.session_state.otp):
+            verify_user(st.session_state.temp_user)
+            st.success("Verified! Login now.")
             go("login")
         else:
-            st.error("Invalid OTP")
+            st.error("Wrong OTP")
 
-# ================= DASHBOARD =================
+# ---------------- DASHBOARD ----------------
 elif st.session_state.page == "dashboard":
-    st.markdown("<div class='header'><h2>Internship Dashboard</h2></div>", unsafe_allow_html=True)
+    st.markdown("<div class='header'><h2>Dashboard</h2></div>", unsafe_allow_html=True)
 
-    skill = st.text_input("Skill (Python, Data, Web)")
+    skill = st.text_input("Skill")
     location = st.text_input("Location", "India")
 
     resume = st.file_uploader("Upload Resume (PDF)", type="pdf")
-    skills = []
     if resume:
         reader = PdfReader(resume)
-        text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
-        for s in ["python","data","ml","web","sql","java"]:
-            if s in text:
-                skills.append(s)
-        st.success(f"Extracted Skills: {', '.join(skills)}")
+        text = " ".join([p.extract_text() or "" for p in reader.pages])
+        st.success("Resume processed")
 
-    if st.button("🔍 Search Internships"):
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO search_logs (username, skill, location) VALUES (?,?,?)",
-            (st.session_state.user, skill, location)
-        )
-        conn.commit()
-        conn.close()
+    if st.button("Search Internships"):
         go("results")
 
-# ================= RESULTS =================
+# ---------------- RESULTS ----------------
 elif st.session_state.page == "results":
     st.markdown("<div class='header'><h2>Recommended Internships</h2></div>", unsafe_allow_html=True)
 
-    internships = [
-        {"title":"Python Intern","company":"TechCorp","stipend":20000},
-        {"title":"Data Analyst Intern","company":"DataWorks","stipend":18000},
-        {"title":"Web Developer Intern","company":"WebSolutions","stipend":15000},
+    jobs = [
+        ("Python Intern", "TechCorp", 20000),
+        ("Data Analyst Intern", "DataWorks", 18000),
+        ("Web Intern", "WebSolutions", 15000)
     ]
 
-    for job in internships:
-        job["score"] = job["stipend"]/1000 + len(job["title"])
-
-    internships = sorted(internships, key=lambda x: x["score"], reverse=True)
-
-    for job in internships:
+    for j in jobs:
         st.markdown(f"""
         <div class='card'>
-        <h3>{job['title']}</h3>
-        <p>🏢 {job['company']}</p>
-        <p>💰 ₹{job['stipend']}</p>
-        <p>🎯 Match Score: {int(job['score'])}%</p>
+        <h3>{j[0]}</h3>
+        <p>🏢 {j[1]}</p>
+        <p>💰 ₹{j[2]}</p>
         </div>
         """, unsafe_allow_html=True)
 
     if st.button("⬅ Back"):
         go("dashboard")
 
-# ================= ADMIN DASHBOARD =================
+# ---------------- ADMIN ----------------
 if st.session_state.user and st.session_state.role == "Admin":
     st.markdown("<div class='header'><h2>Admin Analytics</h2></div>", unsafe_allow_html=True)
     conn = get_db()
