@@ -1,8 +1,11 @@
+streamlit
 pandas
 numpy
 scikit-learn
-streamlit
 requests
-joblib
 matplotlib
 seaborn
+PyPDF2
+bcrypt
+
+
