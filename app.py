@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-import time
 from PyPDF2 import PdfReader
 
 # =====================================================
@@ -30,24 +29,35 @@ if "applications" not in st.session_state:
     st.session_state.applications = {}
 
 # =====================================================
-# LOAD DATASET
+# LOAD DATASET + ADD EXTRA INDIAN INTERNSHIPS
 # =====================================================
 @st.cache_data
 def load_dataset():
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
 
-    # REQUIRED COLUMNS HANDLING
-    if "title" not in df.columns:
-        df["title"] = df["job_title"]
-    if "company" not in df.columns:
-        df["company"] = df["company_name"]
-    if "location" not in df.columns:
-        df["location"] = df["city"]
+    # normalize
+    df["title"] = df.get("title", df.get("job_title", "Internship"))
+    df["company"] = df.get("company", df.get("company_name", "Company"))
+    df["location"] = df.get("location", df.get("city", "India"))
+    df["stipend"] = df.get("stipend", 15000)
+    df["skills"] = df.get("skills", "")
 
-    if "stipend" not in df.columns:
-        df["stipend"] = 15000  # fallback stipend
+    # EXTRA REALISTIC INDIAN INTERNSHIPS
+    extra = pd.DataFrame([
+        ["AI Intern", "TCS", "Bangalore", 18000, "python,ml,ai"],
+        ["Data Science Intern", "Wipro", "Hyderabad", 20000, "python,data,ml"],
+        ["Cloud Intern", "Accenture", "Pune", 22000, "cloud,aws,devops"],
+        ["Web Developer Intern", "Zoho", "Chennai", 15000, "html,css,js"],
+        ["Cyber Security Intern", "Tech Mahindra", "Noida", 21000, "security,network"],
+        ["Software Intern", "Infosys", "Mysore", 17000, "java,python"],
+        ["AI Research Intern", "IIT Madras", "Chennai", 25000, "ai,ml,python"],
+        ["Product Intern", "Flipkart", "Bangalore", 23000, "product,analysis"],
+        ["Mobile App Intern", "Paytm", "Noida", 19000, "android,flutter"],
+        ["ML Engineer Intern", "Swiggy", "Bangalore", 24000, "ml,python,data"]
+    ], columns=["title", "company", "location", "stipend", "skills"])
 
+    df = pd.concat([df, extra], ignore_index=True)
     return df
 
 data = load_dataset()
@@ -58,204 +68,157 @@ data = load_dataset()
 def get_live_location():
     try:
         res = requests.get("https://ipapi.co/json/", timeout=5).json()
-        return {
-            "city": res.get("city", "Unknown"),
-            "country": res.get("country_name", "India")
-        }
+        return {"city": res.get("city", "Unknown"), "country": res.get("country_name", "India")}
     except:
-        return {
-            "city": "Unknown",
-            "country": "India"
-        }
+        return {"city": "Unknown", "country": "India"}
 
 # =====================================================
-# THEME
+# MATCHING SCORE
 # =====================================================
-def apply_theme():
-    if st.session_state.dark:
-        bg = "#0f172a"
-        card = "#1e293b"
-        text = "white"
-    else:
-        bg = "linear-gradient(135deg,#f5f7fa,#e0c3fc,#8ec5fc)"
-        card = "#ffffff"
-        text = "#111827"
-
-    st.markdown(f"""
-    <style>
-    [data-testid="stAppViewContainer"] {{
-        background:{bg};
-        color:{text};
-    }}
-    .header {{
-        background:linear-gradient(90deg,#0a66c2,#6a11cb,#ff6a88);
-        padding:30px;
-        border-radius:20px;
-        color:white;
-        margin-bottom:25px;
-    }}
-    .card {{
-        background:{card};
-        padding:22px;
-        border-radius:18px;
-        margin-bottom:20px;
-        box-shadow:0 15px 35px rgba(0,0,0,0.15);
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-apply_theme()
-
-# =====================================================
-# HELPERS
-# =====================================================
-def go(page):
-    st.session_state.page = page
-    st.rerun()
-
-def toast(msg, icon="✨"):
-    st.toast(msg, icon=icon)
-
-def compute_match_score(stipend, location_match):
-    stipend_score = stipend / 30000
-    location_score = 1 if location_match else 0.6
-    return round((0.6 * stipend_score + 0.4 * location_score) * 100, 2)
+def compute_score(stipend, skill_match, location_match):
+    return round(
+        (0.5 * skill_match + 0.3 * location_match + 0.2 * (stipend / 30000)) * 100, 2
+    )
 
 # =====================================================
 # SIDEBAR
 # =====================================================
 with st.sidebar:
     st.markdown("## 🎓 Internship Portal")
-    st.toggle("🌙 Dark Mode", key="dark")
     if st.session_state.user:
         st.success(f"👤 {st.session_state.user}")
         st.info(f"Role: {st.session_state.role}")
         if st.button("🚪 Logout"):
             st.session_state.user = None
-            go("login")
+            st.session_state.page = "login"
+            st.rerun()
 
 # =====================================================
 # LOGIN
 # =====================================================
 if st.session_state.page == "login":
-    st.markdown("""
-    <div class="header">
-        <h1>Welcome 👋</h1>
-        <p>Internship Demand & Recommendation System</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.title("Internship Recommendation System")
 
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
     role = st.selectbox("Role", ["Student", "Admin"])
 
     if st.button("Login"):
-        if username and password:
-            st.session_state.user = username
+        if user and pwd:
+            st.session_state.user = user
             st.session_state.role = role
             st.session_state.location = get_live_location()
-            go("dashboard")
-        else:
-            st.error("Enter credentials")
-    st.markdown("</div>", unsafe_allow_html=True)
+            st.session_state.page = "dashboard"
+            st.rerun()
 
 # =====================================================
 # DASHBOARD
 # =====================================================
 elif st.session_state.page == "dashboard":
-    loc = st.session_state.location or get_live_location()
+    loc = st.session_state.location
+    st.subheader(f"📍 Detected Location: {loc['city']}, {loc['country']}")
 
-    st.markdown("""
-    <div class="header">
-        <h1>🚀 Internship Dashboard</h1>
-    </div>
-    """, unsafe_allow_html=True)
+    # SKILL INPUT
+    user_skills = st.text_input(
+        "Enter skills (comma separated)",
+        placeholder="python, data, ml"
+    )
 
-    st.info(f"📍 Detected Location: {loc['city']}, {loc['country']}")
+    # LOCATION DROPDOWN FROM INDIAN COMPANIES
+    locations = sorted(data["location"].astype(str).unique())
+    selected_location = st.selectbox(
+        "Select Internship Location",
+        ["All"] + locations
+    )
 
-    resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
+    # RESUME UPLOAD
+    resume = st.file_uploader("Upload Resume (PDF)", type="pdf")
+    resume_skills = []
     if resume:
-        reader = PdfReader(resume)
-        text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
-        skills = [s for s in ["python","data","ml","web","sql","java"] if s in text]
-        st.success(f"Extracted Skills: {', '.join(skills)}")
+        text = " ".join([p.extract_text() or "" for p in PdfReader(resume).pages]).lower()
+        resume_skills = [s for s in ["python","data","ml","web","java","cloud"] if s in text]
+        st.success(f"Extracted skills: {', '.join(resume_skills)}")
 
     if st.button("Search Internships"):
-        go("results")
+        st.session_state.search = {
+            "skills": user_skills.lower().split(","),
+            "resume_skills": resume_skills,
+            "location": selected_location
+        }
+        st.session_state.page = "results"
+        st.rerun()
 
 # =====================================================
-# RESULTS (DATASET + LIVE LOCATION)
+# RESULTS
 # =====================================================
 elif st.session_state.page == "results":
-    loc = st.session_state.location
-    user_city = loc["city"].lower()
+    search = st.session_state.search
+    user_city = st.session_state.location["city"].lower()
 
-    st.markdown("""
-    <div class="header">
-        <h1>🎯 Recommended Internships</h1>
-        <p>Dataset-driven + Location-aware</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.subheader("🎯 Recommended Internships")
 
-    internships = data.to_dict("records")
+    results = []
+    for _, r in data.iterrows():
+        skills_text = str(r["skills"]).lower()
 
-    ranked = []
-    for i in internships:
-        city = str(i.get("location", "")).lower()
-        stipend = int(i.get("stipend", 15000))
-        location_match = user_city in city
-        score = compute_match_score(stipend, location_match)
-        i["score"] = score
-        ranked.append(i)
+        skill_match = sum(
+            s.strip() in skills_text
+            for s in search["skills"] if s.strip()
+        )
+        skill_match = min(skill_match / max(len(search["skills"]),1), 1)
 
-    ranked = sorted(ranked, key=lambda x: x["score"], reverse=True)[:10]
+        if search["location"] != "All" and search["location"].lower() not in str(r["location"]).lower():
+            continue
 
-    for i in ranked:
+        location_match = 1 if user_city in str(r["location"]).lower() else 0.6
+        score = compute_score(r["stipend"], skill_match, location_match)
+
+        results.append({
+            "title": r["title"],
+            "company": r["company"],
+            "location": r["location"],
+            "stipend": r["stipend"],
+            "score": score
+        })
+
+    results = sorted(results, key=lambda x: x["score"], reverse=True)[:20]
+
+    if not results:
+        st.warning("No internships found for given criteria")
+
+    for i in results:
         job_id = f"{i['title']}@{i['company']}"
 
         st.markdown(f"""
-        <div class="card">
-            <h3>{i['title']}</h3>
-            <p>🏢 {i['company']}</p>
-            <p>📍 {i.get('location','N/A')}</p>
-            <p>💰 ₹{i.get('stipend',15000)}</p>
-            <p>🎯 Match Score: {i['score']}%</p>
-        </div>
-        """, unsafe_allow_html=True)
+        **{i['title']}**  
+        🏢 {i['company']} | 📍 {i['location']} | 💰 ₹{i['stipend']}  
+        🎯 Match Score: {i['score']}%
+        """)
 
-        if job_id in st.session_state.applications:
-            st.info(f"📌 Status: {st.session_state.applications[job_id]['status']}")
-        else:
-            if st.button(f"Apply – {i['title']}", key=job_id):
+        if job_id not in st.session_state.applications:
+            if st.button(f"Apply – {job_id}", key=job_id):
                 st.session_state.applications[job_id] = {
                     "student": st.session_state.user,
                     "status": "Pending"
                 }
-                toast("Application submitted 🎉")
+        else:
+            st.info(f"Status: {st.session_state.applications[job_id]['status']}")
 
     if st.button("⬅ Back"):
-        go("dashboard")
+        st.session_state.page = "dashboard"
+        st.rerun()
 
 # =====================================================
 # ADMIN VIEW
 # =====================================================
 if st.session_state.user and st.session_state.role == "Admin":
-    st.markdown("""
-    <div class="header">
-        <h1>📊 Admin – Applications</h1>
-    </div>
-    """, unsafe_allow_html=True)
-
-    for job_id, datax in st.session_state.applications.items():
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.write(f"Internship: {job_id}")
-        st.write(f"Student: {datax['student']}")
-        status = st.selectbox(
+    st.subheader("📊 Admin – Applications Review")
+    for job, info in st.session_state.applications.items():
+        st.write(job, "→", info["student"])
+        info["status"] = st.selectbox(
             "Status",
             ["Pending", "Selected"],
-            index=["Pending","Selected"].index(datax["status"]),
-            key=job_id
+            index=["Pending","Selected"].index(info["status"]),
+            key=job
         )
-        st.session_state.applications[job_id]["status"] = status
-        st.markdown("</div>", unsafe_allow_html=True)
+
