@@ -24,8 +24,6 @@ if "role" not in st.session_state:
     st.session_state.role = "Student"
 if "dark" not in st.session_state:
     st.session_state.dark = False
-if "location" not in st.session_state:
-    st.session_state.location = None
 if "applications" not in st.session_state:
     st.session_state.applications = {}
 
@@ -37,46 +35,51 @@ def load_dataset():
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
 
-    if "title" not in df.columns:
-        df["title"] = df.get("job_title", "Internship")
-    if "company" not in df.columns:
-        df["company"] = df.get("company_name", "Company")
-    if "location" not in df.columns:
-        df["location"] = df.get("city", "India")
-    if "stipend" not in df.columns:
-        df["stipend"] = 15000
-    if "skills" not in df.columns:
-        df["skills"] = "python,data,web"
+    # Normalize column names safely
+    if "job_title" in df.columns:
+        df["title"] = df["job_title"]
+    if "company_name" in df.columns:
+        df["company"] = df["company_name"]
+    if "city" in df.columns:
+        df["location"] = df["city"]
+    if "salary_min" in df.columns:
+        df["stipend"] = df["salary_min"].fillna(15000)
+    if "description" not in df.columns:
+        df["description"] = "Internship opportunity"
+
+    if "company_logo" not in df.columns and "logo" in df.columns:
+        df["company_logo"] = df["logo"]
+
+    # Fallbacks
+    df["location"] = df.get("location", "India")
+    df["stipend"] = df.get("stipend", 15000)
 
     return df
 
 data = load_dataset()
 
 # =====================================================
-# LIVE LOCATION (IP BASED)
+# LIVE LOCATION (IP)
 # =====================================================
 def get_live_location():
     try:
-        res = requests.get("https://ipapi.co/json/", timeout=5).json()
-        return {
-            "city": res.get("city", "Unknown"),
-            "country": res.get("country_name", "India")
-        }
+        r = requests.get("https://ipapi.co/json/", timeout=4).json()
+        return r.get("city", "India")
     except:
-        return {"city": "Unknown", "country": "India"}
+        return "India"
 
 # =====================================================
-# THEME (EXACT BACKGROUND YOU ASKED)
+# THEME
 # =====================================================
 def apply_theme():
     if st.session_state.dark:
-        bg = "linear-gradient(135deg,#0f172a,#020617)"
-        card = "rgba(30,41,59,0.95)"
+        bg = "#0f172a"
+        card = "#1e293b"
         text = "white"
     else:
-        bg = "linear-gradient(135deg,#f3e8ff,#ddd6fe,#bfdbfe)"
-        card = "rgba(255,255,255,0.88)"
-        text = "#0f172a"
+        bg = "linear-gradient(135deg,#f5f7fa,#e0c3fc,#8ec5fc)"
+        card = "#ffffff"
+        text = "#111827"
 
     st.markdown(f"""
     <style>
@@ -85,34 +88,18 @@ def apply_theme():
         color:{text};
     }}
     .header {{
-        background:linear-gradient(90deg,#2563eb,#7c3aed,#ec4899);
+        background:linear-gradient(90deg,#0a66c2,#6a11cb,#ff6a88);
         padding:30px;
-        border-radius:22px;
+        border-radius:20px;
         color:white;
         margin-bottom:25px;
-        box-shadow:0 25px 50px rgba(0,0,0,0.25);
     }}
     .card {{
         background:{card};
-        backdrop-filter: blur(10px);
         padding:22px;
-        border-radius:20px;
+        border-radius:18px;
         margin-bottom:20px;
-        box-shadow:0 15px 35px rgba(0,0,0,0.18);
-        animation:fadeUp 0.6s ease;
-    }}
-    @keyframes fadeUp {{
-        from {{opacity:0; transform:translateY(18px);}}
-        to {{opacity:1; transform:translateY(0);}}
-    }}
-    button {{
-        background:linear-gradient(90deg,#2563eb,#7c3aed)!important;
-        color:white!important;
-        border-radius:12px!important;
-        font-weight:600!important;
-    }}
-    section[data-testid="stSidebar"] {{
-        background:linear-gradient(180deg,#f5f3ff,#e0e7ff);
+        box-shadow:0 15px 35px rgba(0,0,0,0.15);
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -126,10 +113,7 @@ def go(page):
     st.session_state.page = page
     st.rerun()
 
-def toast(msg, icon="✨"):
-    st.toast(msg, icon=icon)
-
-def match_score(stipend, skill_match, location_match):
+def compute_match(stipend, skill_match, location_match):
     return round(
         (0.5 * (stipend / 30000) +
          0.3 * skill_match +
@@ -142,7 +126,6 @@ def match_score(stipend, skill_match, location_match):
 with st.sidebar:
     st.markdown("## 🎓 Internship Portal")
     st.toggle("🌙 Dark Mode", key="dark")
-    st.markdown("---")
     if st.session_state.user:
         st.success(f"👤 {st.session_state.user}")
         st.info(f"Role: {st.session_state.role}")
@@ -162,26 +145,20 @@ if st.session_state.page == "login":
     """, unsafe_allow_html=True)
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    username = st.text_input("👤 Username")
-    password = st.text_input("🔑 Password", type="password")
+    user = st.text_input("Username")
     role = st.selectbox("Role", ["Student", "Admin"])
-
     if st.button("Login"):
-        if username and password:
-            st.session_state.user = username
+        if user:
+            st.session_state.user = user
             st.session_state.role = role
-            st.session_state.location = get_live_location()
-            toast("Login successful 🎉")
             go("dashboard")
-        else:
-            st.error("Enter credentials")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =====================================================
 # DASHBOARD
 # =====================================================
 elif st.session_state.page == "dashboard":
-    loc = st.session_state.location
+    city = get_live_location()
 
     st.markdown("""
     <div class="header">
@@ -190,73 +167,85 @@ elif st.session_state.page == "dashboard":
     </div>
     """, unsafe_allow_html=True)
 
-    st.info(f"📍 Detected Location: {loc['city']}, {loc['country']}")
+    st.info(f"📍 Detected Location: {city}")
 
-    skill_input = st.text_input("🔍 Enter Skill (Python, Data, Web, ML)")
+    skill = st.text_input("🔎 Skill (Python, Data, Web, ML)")
     resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
 
-    extracted_skills = []
+    extracted = []
     if resume:
         reader = PdfReader(resume)
         text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
-        extracted_skills = [s for s in ["python","data","ml","web","sql","java"] if s in text]
-        st.success(f"Extracted Skills: {', '.join(extracted_skills)}")
+        extracted = [s for s in ["python","data","ml","web","sql","java"] if s in text]
+        st.success(f"Extracted Skills: {', '.join(extracted)}")
 
-    if st.button("Search Internships 🚀"):
-        st.session_state.search_skill = skill_input or ",".join(extracted_skills)
+    if st.button("Search Internships"):
+        st.session_state.search_skill = skill.lower()
+        st.session_state.resume_skills = extracted
+        st.session_state.city = city.lower()
         go("results")
 
 # =====================================================
 # RESULTS
 # =====================================================
 elif st.session_state.page == "results":
-    user_city = st.session_state.location["city"].lower()
-    search_skill = st.session_state.get("search_skill", "").lower()
-
     st.markdown("""
     <div class="header">
         <h1>🎯 Recommended Internships</h1>
-        <p>Skill + Location + Stipend based ranking</p>
+        <p>Skill & Location Based Ranking</p>
     </div>
     """, unsafe_allow_html=True)
 
     results = []
-    for _, i in data.iterrows():
-        skill_match = 1 if search_skill in i["skills"].lower() else 0.6
-        location_match = 1 if user_city in str(i["location"]).lower() else 0.6
-        score = match_score(i["stipend"], skill_match, location_match)
+
+    for _, row in data.iterrows():
+        desc = str(row["description"]).lower()
+        skill_match = 1 if st.session_state.search_skill in desc else 0.5
+        location_match = 1 if st.session_state.city in str(row["location"]).lower() else 0.6
+
+        score = compute_match(
+            int(row["stipend"]),
+            skill_match,
+            location_match
+        )
 
         results.append({
-            "title": i["title"],
-            "company": i["company"],
-            "location": i["location"],
-            "stipend": i["stipend"],
+            "title": row["title"],
+            "company": row["company"],
+            "location": row["location"],
+            "stipend": int(row["stipend"]),
+            "description": row["description"][:300] + "...",
+            "logo": row.get("company_logo", ""),
             "score": score
         })
 
-    results = sorted(results, key=lambda x: x["score"], reverse=True)[:15]
+    results = sorted(results, key=lambda x: x["score"], reverse=True)[:12]
 
     for r in results:
-        job_id = f"{r['title']}@{r['company']}"
-        st.markdown(f"""
-        <div class="card">
-            <h3>{r['title']}</h3>
-            <p>🏢 {r['company']}</p>
-            <p>📍 {r['location']}</p>
-            <p>💰 ₹{r['stipend']}</p>
-            <p>🎯 Match Score: {r['score']}%</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-        if job_id in st.session_state.applications:
-            st.info(f"📌 Status: {st.session_state.applications[job_id]['status']}")
-        else:
+        if r["logo"]:
+            st.image(r["logo"], width=80)
+
+        st.subheader(r["title"])
+        st.write(f"🏢 **{r['company']}**")
+        st.write(f"📍 {r['location']}")
+        st.write(f"💰 ₹{r['stipend']}")
+        st.write(f"🎯 Match Score: **{r['score']}%**")
+        st.write(r["description"])
+
+        job_id = f"{r['title']}@{r['company']}"
+        if job_id not in st.session_state.applications:
             if st.button(f"Apply – {r['title']}", key=job_id):
                 st.session_state.applications[job_id] = {
                     "student": st.session_state.user,
                     "status": "Pending"
                 }
-                toast("Application submitted 🎉")
+                st.success("Application submitted")
+        else:
+            st.info(f"Status: {st.session_state.applications[job_id]['status']}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if st.button("⬅ Back"):
         go("dashboard")
@@ -274,15 +263,14 @@ if st.session_state.user and st.session_state.role == "Admin":
     if not st.session_state.applications:
         st.info("No applications yet")
     else:
-        for job_id, app in st.session_state.applications.items():
+        for job, d in st.session_state.applications.items():
             st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.write(f"📌 Internship: {job_id}")
-            st.write(f"👤 Student: {app['student']}")
-            status = st.selectbox(
+            st.write(f"Internship: {job}")
+            st.write(f"Student: {d['student']}")
+            d["status"] = st.selectbox(
                 "Status",
                 ["Pending", "Selected"],
-                index=["Pending","Selected"].index(app["status"]),
-                key=job_id
+                index=["Pending","Selected"].index(d["status"]),
+                key=job
             )
-            st.session_state.applications[job_id]["status"] = status
             st.markdown("</div>", unsafe_allow_html=True)

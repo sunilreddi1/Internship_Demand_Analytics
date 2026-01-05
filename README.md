@@ -62,7 +62,11 @@ Output:
 - Internship recommendations for students
 - Predicted internship demand
 - Internship analytics dashboard
-- Live internship search results
+- Live internship search results 
+## Live Demo
+Streamlit App:  
+https://internship-demand-analytics.streamlit.app
+
 
 ----------------------------------------
 
