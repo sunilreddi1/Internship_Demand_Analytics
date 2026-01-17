@@ -7,5 +7,6 @@ matplotlib
 seaborn
 PyPDF2
 bcrypt
+psycopg2
 
 
