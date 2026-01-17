@@ -32,7 +32,7 @@ with st.sidebar:
     st.session_state.dark_mode = st.toggle("🌙 Dark Mode")
 
 # ---------------- UI COLORS & BACKGROUNDS ----------------
-bg_light = "https://images.unsplash.com/photo-1521737604893-d14cc237f11d"
+bg_light = "https://share.google/KOaOCdr2Torq5Bv7n"
 bg_dark  = "https://images.unsplash.com/photo-1518770660439-4636190af475"
 
 bg = bg_dark if st.session_state.dark_mode else bg_light
