@@ -1,37 +1,29 @@
 import sqlite3
-import bcrypt
 
 conn = sqlite3.connect("users.db")
 cur = conn.cursor()
 
+# USERS TABLE (FIXED)
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    username TEXT PRIMARY KEY,
-    password BLOB,
-    role TEXT,
-    college TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    role TEXT
 )
 """)
 
+# APPLICATIONS TABLE
 cur.execute("""
-CREATE TABLE IF NOT EXISTS search_logs (
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT,
-    skill TEXT,
-    location TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    job_id TEXT,
+    status TEXT
 )
 """)
-
-def add_user(username, password, role, college):
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-    cur.execute(
-        "INSERT OR REPLACE INTO users VALUES (?, ?, ?, ?)",
-        (username, hashed, role, college)
-    )
-
-add_user("student", "student123", "Student", "Engineering College")
-add_user("admin", "admin123", "Admin", "Placement Cell")
 
 conn.commit()
 conn.close()
-print("Database created successfully")
+
+print("✅ Database initialized successfully")
