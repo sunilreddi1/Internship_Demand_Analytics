@@ -18,52 +18,91 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- UI STYLES (LINKEDIN STYLE) ----------------
-st.markdown("""
+# ---------------- DARK MODE TOGGLE ----------------
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+
+with st.sidebar:
+    st.markdown("## ⚙️ Settings")
+    st.session_state.dark_mode = st.toggle("🌙 Dark Mode")
+
+# ---------------- UI STYLES ----------------
+bg_light = "https://images.unsplash.com/photo-1498050108023-c5249f4df085"
+bg_dark = "https://images.unsplash.com/photo-1518770660439-4636190af475"
+
+bg = bg_dark if st.session_state.dark_mode else bg_light
+card_bg = "rgba(30,41,59,0.95)" if st.session_state.dark_mode else "rgba(255,255,255,0.97)"
+text_color = "#e5e7eb" if st.session_state.dark_mode else "#1f2937"
+accent = "#0a66c2"
+
+st.markdown(f"""
 <style>
 
-/* ===== BACKGROUND IMAGE ===== */
-[data-testid="stAppViewContainer"] {
-    background-image: url("https://images.unsplash.com/photo-1522202176988-66273c2fd55f");
+/* ===== BACKGROUND ===== */
+[data-testid="stAppViewContainer"] {{
+    background-image: url("{bg}");
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
-}
+}}
 
-/* ===== MAIN OVERLAY ===== */
-.main {
-    background-color: rgba(255,255,255,0.88);
+/* ===== MAIN ===== */
+.main {{
+    background-color: rgba(0,0,0,0.15);
     padding: 2rem;
     border-radius: 18px;
-}
+}}
 
 /* ===== HEADINGS ===== */
-h1, h2, h3 {
-    color: #0a66c2;
-    font-weight: 700;
-}
+h1,h2,h3 {{
+    color: {accent};
+    font-weight: 800;
+}}
+
+/* ===== TEXT ===== */
+p,span,label,div {{
+    color: {text_color};
+}}
 
 /* ===== CARD ===== */
-.card {
-    background: rgba(255,255,255,0.95);
+.card {{
+    background: {card_bg};
     padding: 22px;
     border-radius: 18px;
     margin-bottom: 20px;
-    box-shadow: 0 12px 30px rgba(0,0,0,0.15);
-}
+    box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+    animation: fadeIn 0.6s ease;
+    transition: transform 0.3s ease;
+}}
+.card:hover {{
+    transform: translateY(-6px);
+}}
 
-/* ===== BUTTONS ===== */
-button {
-    background: linear-gradient(90deg,#0a66c2,#004182) !important;
-    color: white !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-}
+/* ===== BADGES ===== */
+.badge {{
+    display:inline-block;
+    background:#e0f2fe;
+    color:#0369a1;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+    margin-right:6px;
+    font-weight:600;
+}}
 
-/* ===== INPUTS ===== */
-input, select {
-    border-radius: 8px !important;
-}
+/* ===== BUTTON ===== */
+button {{
+    background: linear-gradient(90deg,#0a66c2,#003a75) !important;
+    color:white !important;
+    border-radius:10px !important;
+    font-weight:600 !important;
+}}
+
+/* ===== ANIMATION ===== */
+@keyframes fadeIn {{
+    from {{opacity:0; transform:translateY(15px);}}
+    to {{opacity:1; transform:translateY(0);}}
+}}
 
 </style>
 """, unsafe_allow_html=True)
@@ -87,28 +126,27 @@ if "user" not in st.session_state:
 if "role" not in st.session_state:
     st.session_state.role = None
 
-# ---------------- LOGIN / REGISTER ----------------
+# ---------------- LOGIN ----------------
 if not st.session_state.user:
     st.markdown("<div class='main'>", unsafe_allow_html=True)
     st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-    st.title("🎓 Internship Demand & Recommendation Portal")
-    st.caption("Find internships that match your skills and market demand")
+    st.title("🎓 Internship Portal")
+    st.caption("Internshala-style smart internship recommendations")
 
     username = st.text_input("👤 Username")
-    password = st.text_input("🔑 Password", type="password")
+    password = st.text_input("🔒 Password", type="password")
     role = st.selectbox("Role", ["Student", "Admin"])
 
     if st.button("Login / Register"):
         if username and password:
             conn = db()
             conn.execute(
-                "INSERT OR IGNORE INTO users (username, password, role) VALUES (?,?,?)",
-                (username, password, role)
+                "INSERT OR IGNORE INTO users (username,password,role) VALUES (?,?,?)",
+                (username,password,role)
             )
             conn.commit()
             conn.close()
-
             st.session_state.user = username
             st.session_state.role = role
             st.success("Login successful 🎉")
@@ -118,59 +156,49 @@ if not st.session_state.user:
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-# ---------------- ADMIN DASHBOARD ----------------
+# ---------------- ADMIN ----------------
 elif st.session_state.role == "Admin":
     st.markdown("<div class='main'>", unsafe_allow_html=True)
     show_admin_dashboard()
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- STUDENT DASHBOARD ----------------
+# ---------------- STUDENT ----------------
 else:
     st.markdown("<div class='main'>", unsafe_allow_html=True)
-    st.title("🚀 Internship Recommendation System")
+    st.title("🚀 Internship Recommendations")
 
-    # Load dataset
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
 
-    # Search inputs
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     skill = st.text_input("🔍 Skill (Python, Data, Web, ML)")
-    location = st.selectbox(
-        "📍 Location",
-        sorted(df["location"].dropna().unique())
-    )
+    location = st.selectbox("📍 Location", sorted(df["location"].dropna().unique()))
 
-    resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
+    resume = st.file_uploader("📄 Upload Resume", type="pdf")
     user_skills = extract_skills_from_resume(resume) if resume else []
 
     if user_skills:
-        st.success(f"Detected Skills: {', '.join(user_skills)}")
+        for s in user_skills:
+            st.markdown(f"<span class='badge'>🧠 {s}</span>", unsafe_allow_html=True)
 
-    search = st.button("Search Internships 🚀")
+    search = st.button("🔎 Search Internships")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ---------------- SEARCH RESULTS ----------------
     if search:
         log_search(st.session_state.user, skill, location)
 
         results = []
         for _, row in df.iterrows():
             job_skills = row["description"].lower().split()
-            score = compute_match_score(
-                job_skills,
-                user_skills,
-                row.get("stipend", 15000)
-            )
-
+            score = compute_match_score(job_skills, user_skills, row.get("stipend",15000))
             if skill.lower() in row["title"].lower() and location.lower() in row["location"].lower():
-                results.append((score, row))
+                results.append((score,row))
 
-        results = sorted(results, key=lambda x: x[0], reverse=True)[:10]
+        results = sorted(results, key=lambda x:x[0], reverse=True)[:10]
 
         if not results:
-            st.warning("No matching internships found")
+            st.warning("No internships found")
         else:
             for score, job in results:
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -178,14 +206,15 @@ else:
                 ### {job['title']}
                 🏢 **{job['company']}**  
                 📍 {job['location']}  
-                🎯 Match Score: **{score}%**
-                """)
+                <span class='badge'>💰 ₹{job.get('stipend',15000)}</span>
+                <span class='badge'>🎯 {score}% Match</span>
+                """, unsafe_allow_html=True)
 
                 if st.button(f"Apply – {job['title']}", key=job['title']):
                     conn = db()
                     conn.execute(
-                        "INSERT INTO applications (username, job_id, status) VALUES (?,?,?)",
-                        (st.session_state.user, job['title'], "Pending")
+                        "INSERT INTO applications (username,job_id,status) VALUES (?,?,?)",
+                        (st.session_state.user,job['title'],"Pending")
                     )
                     conn.commit()
                     conn.close()
