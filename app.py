@@ -1,145 +1,94 @@
 import streamlit as st
-import pandas as pd
 import sqlite3
-import re
-import matplotlib.pyplot as plt
+import pandas as pd
+from resume_parser import extract_skills_from_resume
+from recommender import compute_match_score
+from admin_dashboard import show_admin_dashboard
 
-# ---------------- CONFIG ----------------
 st.set_page_config("Internship Demand Portal", "🎓", layout="wide")
 
-DATASET_SKILLS = [
-    "Python","Java","C","SQL","MySQL","PostgreSQL",
-    "React","Node.js","Express","FastAPI",
-    "Data Analysis","Data Science","Machine Learning",
-    "NLP","AI","Artificial Intelligence",
-    "AWS","Excel","Communication","Leadership"
-]
-
-# ---------------- DB ----------------
-def get_db():
+# ---------------- DB HELPERS ----------------
+def db():
     return sqlite3.connect("users.db", check_same_thread=False)
 
-# ---------------- LOAD DATA ----------------
-@st.cache_data
-def load_data():
-    df = pd.read_csv("adzuna_internships_raw.csv")
-    df.columns = df.columns.str.lower()
-    df["description"] = df["description"].fillna("")
-    df["skills"] = df["description"].apply(extract_skills)
-    df["stipend"] = df.get("stipend", 15000)
-    return df
-
-def extract_skills(text):
-    found = []
-    for skill in DATASET_SKILLS:
-        if re.search(rf"\b{re.escape(skill.lower())}\b", text.lower()):
-            found.append(skill)
-    return found
-
-data = load_data()
+def log_search(user, skill, location):
+    conn = db()
+    conn.execute(
+        "INSERT INTO search_logs (username, skill, location) VALUES (?,?,?)",
+        (user, skill, location)
+    )
+    conn.commit()
+    conn.close()
 
 # ---------------- SESSION ----------------
 if "user" not in st.session_state:
     st.session_state.user = None
-if "page" not in st.session_state:
-    st.session_state.page = "login"
+if "role" not in st.session_state:
+    st.session_state.role = None
 
 # ---------------- LOGIN ----------------
-def login_page():
+if not st.session_state.user:
     st.title("🎓 Internship Portal Login")
 
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
+    role = st.selectbox("Role", ["Student", "Admin"])
 
-    if st.button("Login"):
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE username=? AND password=?", (u,p))
-        if cur.fetchone():
-            st.session_state.user = u
-            st.session_state.page = "dashboard"
-            st.rerun()
-        else:
-            st.error("Invalid login")
-
-    st.markdown("---")
-    st.subheader("New User Registration")
-
-    ru = st.text_input("New Username")
-    rp = st.text_input("New Password", type="password")
-
-    if st.button("Register"):
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute("INSERT INTO users (username,password,role) VALUES (?,?,?)",
-                        (ru,rp,"Student"))
-            conn.commit()
-            st.success("User registered successfully")
-        except:
-            st.error("Username already exists")
-
-# ---------------- DASHBOARD ----------------
-def dashboard():
-    st.sidebar.success(f"👤 {st.session_state.user}")
-    if st.sidebar.button("Logout"):
-        st.session_state.user = None
-        st.session_state.page = "login"
+    if st.button("Login / Register"):
+        conn = db()
+        conn.execute(
+            "INSERT OR IGNORE INTO users (username, password, role) VALUES (?,?,?)",
+            (u, p, role)
+        )
+        conn.commit()
+        conn.close()
+        st.session_state.user = u
+        st.session_state.role = role
         st.rerun()
 
-    st.title("🚀 Internship Dashboard")
+# ---------------- ADMIN ----------------
+elif st.session_state.role == "Admin":
+    show_admin_dashboard()
 
-    skill = st.selectbox("🔎 Skill Filter", ["All"] + DATASET_SKILLS)
-
-    if skill != "All":
-        df = data[data["skills"].apply(lambda x: skill in x)]
-    else:
-        df = data.copy()
-
-    # ---------------- MATCH SCORE ----------------
-    def match_score(row):
-        skill_score = len(row["skills"]) / 5
-        stipend_score = min(row["stipend"]/30000,1)
-        return round((0.7*skill_score + 0.3*stipend_score)*100,2)
-
-    df["match_score"] = df.apply(match_score, axis=1)
-    df = df.sort_values("match_score", ascending=False).head(10)
-
-    # ---------------- JOB CARDS ----------------
-    for _,row in df.iterrows():
-        job_id = f"{row['title']}@{row['company']}"
-
-        st.markdown(f"""
-        ### {row['title']}
-        **Company:** {row['company']}  
-        **Skills:** {", ".join(row['skills'])}  
-        **Match Score:** {row['match_score']}%
-        """)
-
-        if st.button("Apply", key=job_id):
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO applications (username,job_id,status)
-                VALUES (?,?,?)
-            """,(st.session_state.user,job_id,"Pending"))
-            conn.commit()
-            st.success("Applied successfully")
-
-        st.markdown("---")
-
-    # ---------------- TOP SKILLS CHART ----------------
-    st.subheader("📊 Top Skills Demand")
-
-    all_skills = sum(data["skills"],[])
-    skill_counts = pd.Series(all_skills).value_counts().head(10)
-
-    fig,ax = plt.subplots()
-    skill_counts.plot(kind="bar", ax=ax)
-    st.pyplot(fig)
-
-# ---------------- ROUTER ----------------
-if st.session_state.page == "login":
-    login_page()
+# ---------------- STUDENT ----------------
 else:
-    dashboard()
+    st.title("🚀 Internship Recommendation System")
+
+    df = pd.read_csv("adzuna_internships_raw.csv")
+    df.columns = df.columns.str.lower()
+
+    skill = st.text_input("🔍 Search Skill")
+    location = st.selectbox("📍 Location", sorted(df["location"].dropna().unique()))
+
+    resume = st.file_uploader("📄 Upload Resume (PDF)", type="pdf")
+    user_skills = extract_skills_from_resume(resume) if resume else []
+
+    if st.button("Search Internships"):
+        log_search(st.session_state.user, skill, location)
+
+        results = []
+        for _, row in df.iterrows():
+            job_skills = str(row.get("skills", "")).lower().split(",")
+            score = compute_match_score(job_skills, user_skills, row.get("stipend", 15000))
+            if skill.lower() in row["title"].lower():
+                results.append((score, row))
+
+        results = sorted(results, key=lambda x: x[0], reverse=True)[:10]
+
+        for score, job in results:
+            st.markdown(f"""
+            ### {job['title']}
+            🏢 {job['company']}  
+            📍 {job['location']}  
+            💰 ₹{job.get('stipend',15000)}  
+            🎯 Match Score: **{score}%**
+            """)
+            if st.button(f"Apply – {job['title']}", key=job['title']):
+                conn = db()
+                conn.execute(
+                    "INSERT INTO applications (username, job_id, status) VALUES (?,?,?)",
+                    (st.session_state.user, job['title'], "Pending")
+                )
+                conn.commit()
+                conn.close()
+                st.success("Application Submitted 🎉")
