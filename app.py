@@ -1,6 +1,11 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import os
+
+if not os.path.exists("users.db"):
+    import init_db
+
 
 from src.resume_parser import extract_skills_from_resume
 from src.recommender import compute_match_score
