@@ -2,28 +2,21 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 
-# ✅ FIXED IMPORTS (FROM src FOLDER)
 from src.resume_parser import extract_skills_from_resume
 from src.recommender import compute_match_score
 from src.admin_dashboard import show_admin_dashboard
 
-# ---------------- PAGE CONFIG ----------------
-st.set_page_config(
-    page_title="Internship Demand & Recommendation Portal",
-    page_icon="🎓",
-    layout="wide"
-)
+st.set_page_config("Internship Demand Portal", "🎓", layout="wide")
 
-# ---------------- DATABASE ----------------
-def get_db():
+# ---------------- DB ----------------
+def db():
     return sqlite3.connect("users.db", check_same_thread=False)
 
-def log_search(username, skill, location):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO search_logs (username, skill, location) VALUES (?, ?, ?)",
-        (username, skill, location)
+def log_search(user, skill, location):
+    conn = db()
+    conn.execute(
+        "INSERT INTO search_logs (username, skill, location) VALUES (?,?,?)",
+        (user, skill, location)
     )
     conn.commit()
     conn.close()
@@ -34,41 +27,40 @@ if "user" not in st.session_state:
 if "role" not in st.session_state:
     st.session_state.role = None
 
-# ---------------- LOGIN / REGISTER ----------------
+# ---------------- LOGIN ----------------
 if not st.session_state.user:
     st.title("🎓 Internship Portal")
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
     role = st.selectbox("Role", ["Student", "Admin"])
 
     if st.button("Login / Register"):
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)",
-            (username, password, role)
+        conn = db()
+        conn.execute(
+            "INSERT OR IGNORE INTO users (username, password, role) VALUES (?,?,?)",
+            (u, p, role)
         )
         conn.commit()
         conn.close()
 
-        st.session_state.user = username
+        st.session_state.user = u
         st.session_state.role = role
-        st.success("Login successful")
         st.rerun()
 
-# ---------------- ADMIN DASHBOARD ----------------
+# ---------------- ADMIN ----------------
 elif st.session_state.role == "Admin":
     show_admin_dashboard()
 
-# ---------------- STUDENT DASHBOARD ----------------
+# ---------------- STUDENT ----------------
 else:
     st.title("🚀 Internship Recommendation System")
 
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
+    df["description"] = df["description"].fillna("")
 
-    skill = st.text_input("🔍 Search Skill (Python, Data, Web)")
+    skill = st.text_input("🔍 Skill")
     location = st.selectbox(
         "📍 Location",
         sorted(df["location"].dropna().unique())
@@ -81,13 +73,10 @@ else:
         log_search(st.session_state.user, skill, location)
 
         results = []
-
         for _, row in df.iterrows():
-            job_skills = str(row.get("skills", "")).lower().split(",")
+            job_skills = row["description"].lower().split()
             score = compute_match_score(
-                job_skills,
-                user_skills,
-                row.get("stipend", 15000)
+                job_skills, user_skills, row.get("stipend", 15000)
             )
 
             if skill.lower() in row["title"].lower() and location.lower() in row["location"].lower():
@@ -98,17 +87,15 @@ else:
         for score, job in results:
             st.markdown(f"""
             ### {job['title']}
-            🏢 **{job['company']}**  
+            🏢 {job['company']}  
             📍 {job['location']}  
-            💰 ₹{job.get('stipend',15000)}  
             🎯 Match Score: **{score}%**
             """)
 
             if st.button(f"Apply – {job['title']}", key=job['title']):
-                conn = get_db()
-                cur = conn.cursor()
-                cur.execute(
-                    "INSERT INTO applications (username, job_id, status) VALUES (?, ?, ?)",
+                conn = db()
+                conn.execute(
+                    "INSERT INTO applications (username, job_id, status) VALUES (?,?,?)",
                     (st.session_state.user, job['title'], "Pending")
                 )
                 conn.commit()

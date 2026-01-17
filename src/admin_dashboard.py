@@ -16,16 +16,16 @@ def show_admin_dashboard():
         st.warning("No search data yet")
         return
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Searches", len(df))
-    col2.metric("Unique Users", df["username"].nunique())
-    col3.metric("Top Skill", df["skill"].value_counts().idxmax())
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Searches", len(df))
+    c2.metric("Unique Users", df["username"].nunique())
+    c3.metric("Top Skill", df["skill"].value_counts().idxmax())
 
     st.subheader("🔥 Top Skills")
-    st.bar_chart(df["skill"].value_counts().head(7))
+    st.bar_chart(df["skill"].value_counts().head(5))
 
     st.subheader("📍 Top Locations")
-    st.bar_chart(df["location"].value_counts().head(7))
+    st.bar_chart(df["location"].value_counts().head(5))
 
     st.subheader("📈 Search Trend")
     df["date"] = pd.to_datetime(df["time"]).dt.date
@@ -37,10 +37,11 @@ def show_admin_dashboard():
     y = daily.values
     model = LinearRegression().fit(X, y)
 
-    future_X = np.arange(len(y), len(y) + 7).reshape(-1, 1)
-    future_y = model.predict(future_X)
+    future = model.predict(
+        np.arange(len(y), len(y) + 7).reshape(-1, 1)
+    )
 
     fig, ax = plt.subplots()
-    ax.plot(list(y) + list(future_y), marker="o")
+    ax.plot(list(y) + list(future), marker="o")
     ax.axvline(len(y)-1, linestyle="--")
     st.pyplot(fig)
