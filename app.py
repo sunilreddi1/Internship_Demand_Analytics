@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import psycopg2
+import psycopg2.extras
 import bcrypt
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -144,8 +144,10 @@ def compute_match(job, skill, location, model):
     return round(final, 2)
 
 # ================= THEME =================
-bg_light = "https://images.unsplash.com/photo-1522202176988-66273c2fd55f"
-bg_dark  = "https://images.unsplash.com/photo-1519389950473-47ba0277781c"
+# ================= THEME =================
+bg_light = "https://pixabay.com/get/gd8c5f0fbe3f2d7a8e6d0e2f0d5b9c8a7f3e9d2e8f0a9b7c6d5e4f3a2b1c0d/man-write-plan-desk-notes-pen-593333.jpg"
+bg_dark  = "https://pixabay.com/get/gc9f4a2e8b7d6c5f0a1e2d3c4b5a6f7e8d9c0b1a2d3e4f5c6b7a8/desk-work-business-office-finance-3139127.jpg"
+
 bg = bg_dark if st.session_state.dark else bg_light
 card = "rgba(30,41,59,0.95)" if st.session_state.dark else "rgba(255,255,255,0.94)"
 text = "#e5e7eb" if st.session_state.dark else "#1f2937"
