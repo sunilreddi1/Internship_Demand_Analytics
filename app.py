@@ -141,7 +141,7 @@ if not st.session_state.user:
                 st.error("Username already exists")
             else:
                 conn = db()
-                conn.execute("INSERT INTO users VALUES (?,?,?)",(u,p,role))
+                conn.execute("INSERT INTO users VALUES (?,?,?,?,?)",(u,p,role))
                 conn.commit(); conn.close()
                 st.success("Registered successfully")
         else:
