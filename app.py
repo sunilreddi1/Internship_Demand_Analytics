@@ -1,44 +1,37 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-import os
-import matplotlib.pyplot as plt
+import psycopg2
+import bcrypt
+import numpy as np
+from sklearn.linear_model import LinearRegression
 
-# ---------------- AUTO DB INIT ----------------
-if not os.path.exists("users.db"):
-    import init_db
-
-from src.resume_parser import extract_skills_from_resume
-from src.recommender import compute_match_score
-from src.admin_dashboard import show_admin_dashboard
-
-# ---------------- PAGE CONFIG ----------------
+# ================= PAGE CONFIG =================
 st.set_page_config(
-    page_title="Internship Demand Portal",
+    page_title="Internship Demand & Recommendation Portal",
     page_icon="🎓",
     layout="wide"
 )
 
-# ---------------- SESSION ----------------
+# ================= SESSION =================
 if "user" not in st.session_state:
     st.session_state.user = None
 if "role" not in st.session_state:
     st.session_state.role = None
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False
 if "page" not in st.session_state:
     st.session_state.page = "search"
+if "dark" not in st.session_state:
+    st.session_state.dark = False
 
-# ---------------- SIDEBAR ----------------
+# ================= SIDEBAR =================
 with st.sidebar:
     st.markdown("## ⚙️ Settings")
-    st.session_state.dark_mode = st.toggle("🌙 Dark Mode")
+    st.session_state.dark = st.toggle("🌙 Dark Mode")
 
     if st.session_state.user:
+        st.success(f"👤 {st.session_state.user}")
         st.divider()
-        if st.session_state.role == "Student":
-            st.button("🔍 Search Internships", on_click=lambda: st.session_state.update(page="search"))
-            st.button("📌 Applied Internships", on_click=lambda: st.session_state.update(page="applied"))
+        st.button("🔍 Search Internships", on_click=lambda: st.session_state.update(page="search"))
+        st.button("📌 Applied Internships", on_click=lambda: st.session_state.update(page="applied"))
         if st.session_state.role == "Admin":
             st.button("📊 Admin Analytics", on_click=lambda: st.session_state.update(page="admin"))
         st.divider()
@@ -48,208 +41,217 @@ with st.sidebar:
             st.session_state.page = "search"
             st.rerun()
 
-# ---------------- UI COLORS & BACKGROUNDS ----------------
+# ================= DATABASE =================
+def db():
+    return psycopg2.connect(
+        host=st.secrets["db"]["host"],
+        database=st.secrets["db"]["name"],
+        user=st.secrets["db"]["user"],
+        password=st.secrets["db"]["password"],
+        port=st.secrets["db"]["port"]
+    )
+
+def init_db():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        email TEXT UNIQUE,
+        password BYTEA,
+        role TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS applications (
+        id SERIAL PRIMARY KEY,
+        username TEXT,
+        job_title TEXT,
+        company TEXT,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ================= AUTH =================
+def register_user(username, email, password, role):
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
+        (username, email, hashed, role)
+    )
+    conn.commit()
+    conn.close()
+
+def validate_login(username, password):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if row and bcrypt.checkpw(password.encode(), row[0]):
+        return row[1]
+    return None
+
+# ================= ML DEMAND MODEL =================
+def build_features(df):
+    df = df.copy()
+    df["stipend"] = df.get("stipend", 15000).fillna(15000)
+    df["skill_count"] = df["description"].apply(lambda x: len(set(x.lower().split())))
+    df["is_remote"] = df["location"].str.contains("remote", case=False, na=False).astype(int)
+    df["company_score"] = df["company"].map(df["company"].value_counts()).fillna(1)
+
+    df["demand"] = (
+        0.4 * df["stipend"] +
+        10 * df["skill_count"] +
+        500 * df["company_score"] +
+        300 * df["is_remote"]
+    )
+    return df
+
+@st.cache_resource
+def train_demand_model(df):
+    X = df[["stipend", "skill_count", "company_score", "is_remote"]]
+    y = df["demand"]
+    model = LinearRegression()
+    model.fit(X, y)
+    return model
+
+def compute_match(job, skill, location, model):
+    skill_score = 1 if skill.lower() in job["description"].lower() else 0
+    location_score = 1 if location.lower() in job["location"].lower() else 0.5
+
+    features = pd.DataFrame([{
+        "stipend": job["stipend"],
+        "skill_count": job["skill_count"],
+        "company_score": job["company_score"],
+        "is_remote": job["is_remote"]
+    }])
+
+    demand_score = model.predict(features)[0]
+
+    final = (
+        0.4 * skill_score +
+        0.3 * location_score +
+        0.3 * (demand_score / df["demand"].max())
+    ) * 100
+
+    return round(final, 2)
+
+# ================= THEME =================
 bg_light = "https://images.unsplash.com/photo-1522202176988-66273c2fd55f"
 bg_dark  = "https://images.unsplash.com/photo-1519389950473-47ba0277781c"
-
-bg = bg_dark if st.session_state.dark_mode else bg_light
-card_bg = "rgba(30,41,59,0.95)" if st.session_state.dark_mode else "rgba(255,255,255,0.94)"
-text_color = "#e5e7eb" if st.session_state.dark_mode else "#1f2937"
-accent = "#0a66c2"
+bg = bg_dark if st.session_state.dark else bg_light
+card = "rgba(30,41,59,0.95)" if st.session_state.dark else "rgba(255,255,255,0.94)"
+text = "#e5e7eb" if st.session_state.dark else "#1f2937"
 
 st.markdown(f"""
 <style>
 [data-testid="stAppViewContainer"] {{
     background-image: url("{bg}");
     background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
 }}
-
-.main {{
-    background: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35));
-    padding: 2.5rem;
-    border-radius: 18px;
-}}
-
-h1,h2,h3 {{ color: {accent}; font-weight: 800; }}
-p,span,label,div {{ color: {text_color}; }}
-
-.card {{
-    background: {card_bg};
-    padding: 22px;
-    border-radius: 18px;
-    margin-bottom: 20px;
-    box-shadow: 0 15px 35px rgba(0,0,0,0.25);
-    animation: fadeIn 0.6s ease;
-}}
-
-.badge {{
-    display:inline-block;
-    background:#e0f2fe;
-    color:#0369a1;
-    padding:6px 10px;
-    border-radius:999px;
-    font-size:12px;
-    margin-right:6px;
-    font-weight:600;
-}}
-
-@keyframes fadeIn {{
-    from {{opacity:0; transform:translateY(15px);}}
-    to {{opacity:1; transform:translateY(0);}}
-}}
+.main {{ background: rgba(0,0,0,0.35); padding:2.5rem; border-radius:18px; }}
+.card {{ background:{card}; padding:22px; border-radius:18px; margin-bottom:20px; }}
+p,span,label,div {{ color:{text}; }}
+.badge {{ background:#e0f2fe; color:#0369a1; padding:6px 10px; border-radius:999px; }}
+button {{ background:#0a66c2!important; color:white!important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- DATABASE ----------------
-def db():
-    return sqlite3.connect("users.db", check_same_thread=False)
-
-# ---------------- AUTH HELPERS ----------------
-def user_exists(username):
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM users WHERE username=?", (username,))
-    ok = cur.fetchone() is not None
-    conn.close()
-    return ok
-
-def validate_login(username, password):
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE username=? AND password=?", (username,password))
-    row = cur.fetchone()
-    conn.close()
-    return row
-
-# ---------------- LOGIN / REGISTER ----------------
+# ================= LOGIN =================
 if not st.session_state.user:
     st.markdown("<div class='main'><div class='card'>", unsafe_allow_html=True)
-    st.title("🎓 Internship Portal")
+    st.title("🎓 Internship Demand Portal")
 
-    mode = st.radio("Choose action", ["Login", "Register"])
-    u = st.text_input("👤 Username")
-    p = st.text_input("🔒 Password", type="password")
-    role = st.selectbox("Role", ["Student","Admin"])
+    mode = st.radio("Action", ["Login", "Register"])
+    u = st.text_input("Username")
+    e = st.text_input("Email")
+    p = st.text_input("Password", type="password")
+    role = st.selectbox("Role", ["Student", "Admin"])
 
     if st.button(mode):
-        if not u or not p:
-            st.error("All fields required")
-        elif mode == "Register":
-            if user_exists(u):
-                st.error("Username already exists")
-            else:
-                conn = db()
-                conn.execute("INSERT INTO users VALUES (?,?,?,?,?)",(u,p,role))
-                conn.commit(); conn.close()
-                st.success("Registered successfully")
+        if mode == "Register":
+            register_user(u, e, p, role)
+            st.success("Registered successfully")
         else:
-            r = validate_login(u,p)
+            r = validate_login(u, p)
             if r:
                 st.session_state.user = u
-                st.session_state.role = r[0]
+                st.session_state.role = r
                 st.rerun()
             else:
                 st.error("Invalid credentials")
+
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-# ========================= STUDENT =========================
+# ================= STUDENT =================
 elif st.session_state.role == "Student":
+    st.markdown("<div class='main'>", unsafe_allow_html=True)
 
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
+    df = build_features(df)
+    model = train_demand_model(df)
 
-    logo_col = "company_logo" if "company_logo" in df.columns else None
-
-    # -------- SEARCH PAGE --------
     if st.session_state.page == "search":
-        st.markdown("<div class='main'>", unsafe_allow_html=True)
         st.title("🚀 Internship Recommendations")
-
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        skill = st.text_input("🔍 Skill")
-        location = st.selectbox("📍 Location", sorted(df["location"].dropna().unique()))
-        resume = st.file_uploader("📄 Upload Resume", type="pdf")
-        user_skills = extract_skills_from_resume(resume) if resume else []
-
-        for s in user_skills:
-            st.markdown(f"<span class='badge'>🧠 {s}</span>", unsafe_allow_html=True)
+        skill = st.text_input("Skill")
+        location = st.selectbox("Location", sorted(df["location"].dropna().unique()))
 
         if st.button("Search"):
-            results=[]
-            for _,row in df.iterrows():
-                score = compute_match_score(row["description"].split(), user_skills, row.get("stipend",15000))
-                if skill.lower() in row["title"].lower() and location.lower() in row["location"].lower():
-                    results.append((score,row))
+            ranked = []
+            for _, job in df.iterrows():
+                if skill.lower() in job["title"].lower():
+                    score = compute_match(job, skill, location, model)
+                    ranked.append((score, job))
 
-            for score,job in sorted(results,reverse=True)[:10]:
+            for score, job in sorted(ranked, reverse=True)[:10]:
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
-
-                if logo_col and pd.notna(job[logo_col]):
-                    st.image(job[logo_col], width=80)
-
                 st.markdown(f"""
                 ### {job['title']}
-                🏢 **{job['company']}**  
-                📍 {job['location']}  
+                🏢 **{job['company']}**
+                📍 {job['location']}
                 <span class='badge'>🎯 {score}% Match</span>
                 """, unsafe_allow_html=True)
 
-                if st.button(f"Apply – {job['title']}", key=f"a_{job['title']}"):
-                    conn=db()
-                    conn.execute(
-                        "INSERT INTO applications VALUES (?,?,?,?)",
-                        (st.session_state.user, job["title"], job["company"], "Pending")
+                if st.button(f"Apply – {job['title']}", key=job['title']):
+                    conn=db(); cur=conn.cursor()
+                    cur.execute(
+                        "INSERT INTO applications (username,job_title,company) VALUES (%s,%s,%s)",
+                        (st.session_state.user, job["title"], job["company"])
                     )
                     conn.commit(); conn.close()
                     st.success("Applied successfully")
-
                 st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
-    # -------- APPLIED PAGE --------
     elif st.session_state.page == "applied":
-        st.markdown("<div class='main'>", unsafe_allow_html=True)
         st.title("📌 Applied Internships")
-
         conn=db()
-        apps=pd.read_sql(
-            "SELECT * FROM applications WHERE username=?",
-            conn, params=(st.session_state.user,)
-        )
+        apps=pd.read_sql("SELECT * FROM applications WHERE username=%s",conn,params=(st.session_state.user,))
         conn.close()
 
-        if apps.empty:
-            st.info("No applications yet")
-        else:
-            for _,a in apps.iterrows():
-                st.markdown("<div class='card'>", unsafe_allow_html=True)
-                st.markdown(f"""
-                ### {a['job_id']}
-                🏢 **{a['company']}**  
-                <span class='badge'>📌 {a['status']}</span>
-                """, unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        for _,a in apps.iterrows():
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown(f"### {a['job_title']}  \n🏢 {a['company']}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-# ========================= ADMIN =========================
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ================= ADMIN =================
 elif st.session_state.role == "Admin":
     st.markdown("<div class='main'>", unsafe_allow_html=True)
     st.title("📊 Admin Analytics")
 
     conn=db()
-    apps=pd.read_sql("SELECT * FROM applications",conn)
+    apps=pd.read_sql("SELECT company, COUNT(*) cnt FROM applications GROUP BY company",conn)
     conn.close()
 
-    if not apps.empty:
-        st.subheader("Applications by Company")
-        st.bar_chart(apps["company"].value_counts())
-
-        st.subheader("Application Status")
-        st.bar_chart(apps["status"].value_counts())
-    else:
-        st.info("No application data yet")
-
+    st.bar_chart(apps.set_index("company"))
     st.markdown("</div>", unsafe_allow_html=True)
