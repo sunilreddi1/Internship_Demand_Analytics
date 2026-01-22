@@ -13,45 +13,15 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================= SESSION =================
-for k, v in {
-    "user": None,
-    "role": None,
-    "page": "search",
-    "dark": False
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-# ================= SIDEBAR =================
-with st.sidebar:
-    st.markdown("## ⚙️ Settings")
-    st.session_state.dark = st.toggle("🌙 Dark Mode")
-
-    if st.session_state.user:
-        st.success(f"👤 {st.session_state.user}")
-        st.divider()
-        st.button("🔍 Search", on_click=lambda: st.session_state.update(page="search"))
-        st.button("📌 Applied", on_click=lambda: st.session_state.update(page="applied"))
-        if st.session_state.role == "Admin":
-            st.button("📊 Admin", on_click=lambda: st.session_state.update(page="admin"))
-        if st.button("🚪 Logout"):
-            st.session_state.user = None
-            st.session_state.role = None
-            st.session_state.page = "search"
-            st.rerun()
-
 # ================= DATABASE =================
-def db():
-    return psycopg2.connect(
-        host=st.secrets["db"]["host"],
-        database=st.secrets["db"]["name"],
-        user=st.secrets["db"]["user"],
-        password=st.secrets["db"]["password"],
-        port=st.secrets["db"]["port"],
-        sslmode="require"  
-    )
+DATABASE_URL = (
+    "postgresql://neondb_owner:npg_Oigm2nBb0Jqk"
+    "@ep-orange-band-ah7k9fu3-pooler.c-3.us-east-1.aws.neon.tech:5432"
+    "/neondb?sslmode=require"
+)
 
+def db():
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
     conn = db()
@@ -64,7 +34,6 @@ def init_db():
         password BYTEA,
         role TEXT
     );
-
     CREATE TABLE IF NOT EXISTS applications (
         id SERIAL PRIMARY KEY,
         username TEXT,
@@ -77,6 +46,15 @@ def init_db():
     conn.close()
 
 init_db()
+
+# ================= SESSION =================
+for k, v in {
+    "user": None,
+    "role": None,
+    "page": "search"
+}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 # ================= AUTH =================
 def register_user(username, email, password, role):
@@ -91,8 +69,7 @@ def register_user(username, email, password, role):
         conn.close()
         return False, "❌ Username or Email already exists"
 
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
     cur.execute(
         "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
         (username, email, hashed, role)
@@ -100,24 +77,6 @@ def register_user(username, email, password, role):
     conn.commit()
     conn.close()
     return True, "✅ Registration successful"
-
-def reset_password(username, new_password):
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
-    if not cur.fetchone():
-        conn.close()
-        return False, "❌ User not found"
-
-    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
-    cur.execute(
-        "UPDATE users SET password=%s WHERE username=%s",
-        (hashed, username)
-    )
-    conn.commit()
-    conn.close()
-    return True, "✅ Password updated"
 
 def validate_login(username, password):
     conn = db()
@@ -132,19 +91,34 @@ def validate_login(username, password):
     if not row:
         return None
 
-    # 🔥 CRITICAL FIX (memoryview → bytes)
-    stored_password = bytes(row[0])
-
-    if bcrypt.checkpw(password.encode(), stored_password):
+    hashed_pw = bytes(row[0])   # 🔥 FIXES bcrypt memoryview crash
+    if bcrypt.checkpw(password.encode("utf-8"), hashed_pw):
         return row[1]
 
     return None
 
-# ================= ML DEMAND MODEL =================
+def reset_password(username, new_password):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
+    if not cur.fetchone():
+        conn.close()
+        return False, "❌ User not found"
+
+    hashed = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt())
+    cur.execute(
+        "UPDATE users SET password=%s WHERE username=%s",
+        (hashed, username)
+    )
+    conn.commit()
+    conn.close()
+    return True, "✅ Password updated"
+
+# ================= ML MODEL =================
 def build_features(df):
     df = df.copy()
     df["stipend"] = df.get("stipend", 15000).fillna(15000)
-    df["skill_count"] = df["description"].apply(lambda x: len(set(x.split())))
+    df["skill_count"] = df["description"].str.split().apply(len)
     df["company_score"] = df["company"].map(df["company"].value_counts())
     df["is_remote"] = df["location"].str.contains("remote", case=False, na=False).astype(int)
 
@@ -162,8 +136,7 @@ def train_model(df):
     y = df["demand"]
     model = LinearRegression()
     model.fit(X, y)
-    preds = model.predict(X)
-    acc = r2_score(y, preds) * 100
+    acc = r2_score(y, model.predict(X)) * 100
     return model, round(acc, 2)
 
 # ================= SKILL TREND =================
@@ -171,13 +144,12 @@ def extract_skills(text):
     skills = ["python","java","sql","ml","data","web","cloud","react"]
     return [s for s in skills if s in text.lower()]
 
-# ================= LOGIN / REGISTER =================
+# ================= UI =================
 if not st.session_state.user:
     st.title("🎓 Internship Demand Portal")
+    t1, t2, t3 = st.tabs(["Login", "Register", "Forgot Password"])
 
-    tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot Password"])
-
-    with tab1:
+    with t1:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         if st.button("Login"):
@@ -187,19 +159,19 @@ if not st.session_state.user:
                 st.session_state.role = role
                 st.rerun()
             else:
-                st.error("❌ Invalid username or password")
+                st.error("Invalid credentials")
 
-    with tab2:
+    with t2:
         u = st.text_input("New Username")
         e = st.text_input("Email")
         p = st.text_input("Password", type="password")
-        role = st.selectbox("Role", ["Student", "Admin"])
+        r = st.selectbox("Role", ["Student", "Admin"])
         if st.button("Register"):
-            ok, msg = register_user(u, e, p, role)
+            ok, msg = register_user(u, e, p, r)
             st.success(msg) if ok else st.error(msg)
 
-    with tab3:
-        u = st.text_input("Username")
+    with t3:
+        u = st.text_input("Username for reset")
         npw = st.text_input("New Password", type="password")
         if st.button("Reset Password"):
             ok, msg = reset_password(u, npw)
@@ -208,29 +180,25 @@ if not st.session_state.user:
 # ================= STUDENT =================
 elif st.session_state.role == "Student":
     df = pd.read_csv("adzuna_internships_raw.csv")
-    df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
     df = build_features(df)
     model, acc = train_model(df)
 
-    st.info(f"📈 ML Demand Model Accuracy: **{acc}%**")
+    st.success(f"📈 ML Demand Accuracy: **{acc}%**")
 
-    if st.session_state.page == "search":
-        skill = st.text_input("Skill")
-        location = st.selectbox("Location", sorted(df["location"].dropna().unique()))
+    skill = st.text_input("Skill")
+    if st.button("Search"):
+        df["score"] = model.predict(
+            df[["stipend","skill_count","company_score","is_remote"]]
+        )
+        res = df[df["title"].str.contains(skill, case=False)].sort_values(
+            "score", ascending=False
+        ).head(10)
 
-        if st.button("Search"):
-            df["score"] = model.predict(
-                df[["stipend", "skill_count", "company_score", "is_remote"]]
+        for _, j in res.iterrows():
+            st.markdown(
+                f"### {j['title']}\n🏢 {j['company']}  \n📍 {j['location']}"
             )
-            res = df[
-                df["title"].str.contains(skill, case=False, na=False)
-            ].sort_values("score", ascending=False).head(10)
-
-            for _, j in res.iterrows():
-                st.markdown(
-                    f"### {j['title']}  \n🏢 {j['company']}  \n📍 {j['location']}"
-                )
 
 # ================= ADMIN =================
 elif st.session_state.role == "Admin":
