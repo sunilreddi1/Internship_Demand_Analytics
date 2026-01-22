@@ -1,12 +1,4 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
 venv/
-
-# Streamlit secrets
+__pycache__/
+.env
 .streamlit/secrets.toml
-
-# OS
-.DS_Store
-Thumbs.db

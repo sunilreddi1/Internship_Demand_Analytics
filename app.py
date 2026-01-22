@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import psycopg2.extras
+import psycopg2
 import bcrypt
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -106,6 +106,7 @@ def build_features(df):
     df["is_remote"] = df["location"].str.contains("remote", case=False, na=False).astype(int)
     df["company_score"] = df["company"].map(df["company"].value_counts()).fillna(1)
 
+    # Synthetic demand score (regression target)
     df["demand"] = (
         0.4 * df["stipend"] +
         10 * df["skill_count"] +
@@ -122,7 +123,7 @@ def train_demand_model(df):
     model.fit(X, y)
     return model
 
-def compute_match(job, skill, location, model):
+def compute_match(job, skill, location, model, max_demand):
     skill_score = 1 if skill.lower() in job["description"].lower() else 0
     location_score = 1 if location.lower() in job["location"].lower() else 0.5
 
@@ -138,36 +139,13 @@ def compute_match(job, skill, location, model):
     final = (
         0.4 * skill_score +
         0.3 * location_score +
-        0.3 * (demand_score / df["demand"].max())
+        0.3 * (demand_score / max_demand)
     ) * 100
 
     return round(final, 2)
 
-# ================= THEME =================
-# ================= THEME =================
-bg_light = "https://pixabay.com/get/gd8c5f0fbe3f2d7a8e6d0e2f0d5b9c8a7f3e9d2e8f0a9b7c6d5e4f3a2b1c0d/man-write-plan-desk-notes-pen-593333."
-bg_dark  = "https://pixabay.com/get/gc9f4a2e8b7d6c5f0a1e2d3c4b5a6f7e8d9c0b1a2d3e4f5c6b7a8/desk-work-business-office-finance-3139127."
-bg = bg_dark if st.session_state.dark else bg_light
-card = "rgba(30,41,59,0.95)" if st.session_state.dark else "rgba(255,255,255,0.94)"
-text = "#e5e7eb" if st.session_state.dark else "#1f2937"
-
-st.markdown(f"""
-<style>
-[data-testid="stAppViewContainer"] {{
-    background-image: url("{bg}");
-    background-size: cover;
-}}
-.main {{ background: rgba(0,0,0,0.35); padding:2.5rem; border-radius:18px; }}
-.card {{ background:{card}; padding:22px; border-radius:18px; margin-bottom:20px; }}
-p,span,label,div {{ color:{text}; }}
-.badge {{ background:#e0f2fe; color:#0369a1; padding:6px 10px; border-radius:999px; }}
-button {{ background:#0a66c2!important; color:white!important; }}
-</style>
-""", unsafe_allow_html=True)
-
 # ================= LOGIN =================
 if not st.session_state.user:
-    st.markdown("<div class='main'><div class='card'>", unsafe_allow_html=True)
     st.title("🎓 Internship Demand Portal")
 
     mode = st.radio("Action", ["Login", "Register"])
@@ -189,17 +167,16 @@ if not st.session_state.user:
             else:
                 st.error("Invalid credentials")
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
 # ================= STUDENT =================
 elif st.session_state.role == "Student":
-    st.markdown("<div class='main'>", unsafe_allow_html=True)
 
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
+
     df = build_features(df)
     model = train_demand_model(df)
+    MAX_DEMAND = df["demand"].max()
 
     if st.session_state.page == "search":
         st.title("🚀 Internship Recommendations")
@@ -209,50 +186,58 @@ elif st.session_state.role == "Student":
         if st.button("Search"):
             ranked = []
             for _, job in df.iterrows():
-                if skill.lower() in job["title"].lower():
-                    score = compute_match(job, skill, location, model)
+                if skill.lower() in job["description"].lower():
+                    score = compute_match(job, skill, location, model, MAX_DEMAND)
                     ranked.append((score, job))
 
             for score, job in sorted(ranked, reverse=True)[:10]:
-                st.markdown("<div class='card'>", unsafe_allow_html=True)
-                st.markdown(f"""
-                ### {job['title']}
-                🏢 **{job['company']}**
-                📍 {job['location']}
-                <span class='badge'>🎯 {score}% Match</span>
-                """, unsafe_allow_html=True)
-
-                if st.button(f"Apply – {job['title']}", key=job['title']):
-                    conn=db(); cur=conn.cursor()
-                    cur.execute(
-                        "INSERT INTO applications (username,job_title,company) VALUES (%s,%s,%s)",
-                        (st.session_state.user, job["title"], job["company"])
-                    )
-                    conn.commit(); conn.close()
-                    st.success("Applied successfully")
-                st.markdown("</div>", unsafe_allow_html=True)
+                st.subheader(job["title"])
+                st.write(f"🏢 {job['company']} | 📍 {job['location']}")
+                st.progress(int(score))
+                st.caption(f"Match Score: {score}%")
 
     elif st.session_state.page == "applied":
         st.title("📌 Applied Internships")
-        conn=db()
-        apps=pd.read_sql("SELECT * FROM applications WHERE username=%s",conn,params=(st.session_state.user,))
+        conn = db()
+        apps = pd.read_sql(
+            "SELECT * FROM applications WHERE username=%s",
+            conn,
+            params=(st.session_state.user,)
+        )
         conn.close()
-
-        for _,a in apps.iterrows():
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.markdown(f"### {a['job_title']}  \n🏢 {a['company']}")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.dataframe(apps)
 
 # ================= ADMIN =================
 elif st.session_state.role == "Admin":
-    st.markdown("<div class='main'>", unsafe_allow_html=True)
     st.title("📊 Admin Analytics")
 
-    conn=db()
-    apps=pd.read_sql("SELECT company, COUNT(*) cnt FROM applications GROUP BY company",conn)
-    conn.close()
+    df = pd.read_csv("adzuna_internships_raw.csv")
+    df.columns = df.columns.str.lower()
+    df["description"] = df["description"].fillna("")
+    df = build_features(df)
 
+    # 🔹 Skill-demand trend
+    st.subheader("🔥 Skill Demand Trend")
+    skill_demand = (
+        df.assign(skill=df["description"].str.lower().str.split())
+        .explode("skill")
+        .groupby("skill")["demand"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(15)
+    )
+    st.bar_chart(skill_demand)
+
+    # 🔹 Demand vs skill count
+    st.subheader("📈 Demand vs Skill Count")
+    st.line_chart(df.sort_values("skill_count")[["skill_count", "demand"]])
+
+    # 🔹 Applications by company
+    conn = db()
+    apps = pd.read_sql(
+        "SELECT company, COUNT(*) cnt FROM applications GROUP BY company",
+        conn
+    )
+    conn.close()
+    st.subheader("🏢 Company-wise Applications")
     st.bar_chart(apps.set_index("company"))
-    st.markdown("</div>", unsafe_allow_html=True)
