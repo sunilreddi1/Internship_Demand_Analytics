@@ -4,6 +4,7 @@ import psycopg2
 import bcrypt
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -13,14 +14,14 @@ st.set_page_config(
 )
 
 # ================= SESSION =================
-if "user" not in st.session_state:
-    st.session_state.user = None
-if "role" not in st.session_state:
-    st.session_state.role = None
-if "page" not in st.session_state:
-    st.session_state.page = "search"
-if "dark" not in st.session_state:
-    st.session_state.dark = False
+for k, v in {
+    "user": None,
+    "role": None,
+    "page": "search",
+    "dark": False
+}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 # ================= SIDEBAR =================
 with st.sidebar:
@@ -30,11 +31,10 @@ with st.sidebar:
     if st.session_state.user:
         st.success(f"👤 {st.session_state.user}")
         st.divider()
-        st.button("🔍 Search Internships", on_click=lambda: st.session_state.update(page="search"))
-        st.button("📌 Applied Internships", on_click=lambda: st.session_state.update(page="applied"))
+        st.button("🔍 Search", on_click=lambda: st.session_state.update(page="search"))
+        st.button("📌 Applied", on_click=lambda: st.session_state.update(page="applied"))
         if st.session_state.role == "Admin":
-            st.button("📊 Admin Analytics", on_click=lambda: st.session_state.update(page="admin"))
-        st.divider()
+            st.button("📊 Admin", on_click=lambda: st.session_state.update(page="admin"))
         if st.button("🚪 Logout"):
             st.session_state.user = None
             st.session_state.role = None
@@ -78,166 +78,164 @@ init_db()
 
 # ================= AUTH =================
 def register_user(username, email, password, role):
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
     conn = db()
     cur = conn.cursor()
+
+    cur.execute(
+        "SELECT 1 FROM users WHERE username=%s OR email=%s",
+        (username, email)
+    )
+    if cur.fetchone():
+        conn.close()
+        return False, "❌ Username or Email already exists"
+
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+
     cur.execute(
         "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
         (username, email, hashed, role)
     )
     conn.commit()
     conn.close()
+    return True, "✅ Registration successful"
+
+def reset_password(username, new_password):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
+    if not cur.fetchone():
+        conn.close()
+        return False, "❌ User not found"
+
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+    cur.execute(
+        "UPDATE users SET password=%s WHERE username=%s",
+        (hashed, username)
+    )
+    conn.commit()
+    conn.close()
+    return True, "✅ Password updated"
 
 def validate_login(username, password):
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
+    cur.execute(
+        "SELECT password, role FROM users WHERE username=%s",
+        (username,)
+    )
     row = cur.fetchone()
     conn.close()
-    if row and bcrypt.checkpw(password.encode(), row[0]):
+
+    if not row:
+        return None
+
+    # 🔥 CRITICAL FIX (memoryview → bytes)
+    stored_password = bytes(row[0])
+
+    if bcrypt.checkpw(password.encode(), stored_password):
         return row[1]
+
     return None
 
 # ================= ML DEMAND MODEL =================
 def build_features(df):
     df = df.copy()
     df["stipend"] = df.get("stipend", 15000).fillna(15000)
-    df["skill_count"] = df["description"].apply(lambda x: len(set(x.lower().split())))
+    df["skill_count"] = df["description"].apply(lambda x: len(set(x.split())))
+    df["company_score"] = df["company"].map(df["company"].value_counts())
     df["is_remote"] = df["location"].str.contains("remote", case=False, na=False).astype(int)
-    df["company_score"] = df["company"].map(df["company"].value_counts()).fillna(1)
 
-    # Synthetic demand score (regression target)
     df["demand"] = (
         0.4 * df["stipend"] +
-        10 * df["skill_count"] +
+        20 * df["skill_count"] +
         500 * df["company_score"] +
         300 * df["is_remote"]
     )
     return df
 
 @st.cache_resource
-def train_demand_model(df):
+def train_model(df):
     X = df[["stipend", "skill_count", "company_score", "is_remote"]]
     y = df["demand"]
     model = LinearRegression()
     model.fit(X, y)
-    return model
+    preds = model.predict(X)
+    acc = r2_score(y, preds) * 100
+    return model, round(acc, 2)
 
-def compute_match(job, skill, location, model, max_demand):
-    skill_score = 1 if skill.lower() in job["description"].lower() else 0
-    location_score = 1 if location.lower() in job["location"].lower() else 0.5
+# ================= SKILL TREND =================
+def extract_skills(text):
+    skills = ["python","java","sql","ml","data","web","cloud","react"]
+    return [s for s in skills if s in text.lower()]
 
-    features = pd.DataFrame([{
-        "stipend": job["stipend"],
-        "skill_count": job["skill_count"],
-        "company_score": job["company_score"],
-        "is_remote": job["is_remote"]
-    }])
-
-    demand_score = model.predict(features)[0]
-
-    final = (
-        0.4 * skill_score +
-        0.3 * location_score +
-        0.3 * (demand_score / max_demand)
-    ) * 100
-
-    return round(final, 2)
-
-# ================= LOGIN =================
+# ================= LOGIN / REGISTER =================
 if not st.session_state.user:
     st.title("🎓 Internship Demand Portal")
 
-    mode = st.radio("Action", ["Login", "Register"])
-    u = st.text_input("Username")
-    e = st.text_input("Email")
-    p = st.text_input("Password", type="password")
-    role = st.selectbox("Role", ["Student", "Admin"])
+    tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot Password"])
 
-    if st.button(mode):
-        if mode == "Register":
-            register_user(u, e, p, role)
-            st.success("Registered successfully")
-        else:
-            r = validate_login(u, p)
-            if r:
+    with tab1:
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        if st.button("Login"):
+            role = validate_login(u, p)
+            if role:
                 st.session_state.user = u
-                st.session_state.role = r
+                st.session_state.role = role
                 st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("❌ Invalid username or password")
+
+    with tab2:
+        u = st.text_input("New Username")
+        e = st.text_input("Email")
+        p = st.text_input("Password", type="password")
+        role = st.selectbox("Role", ["Student", "Admin"])
+        if st.button("Register"):
+            ok, msg = register_user(u, e, p, role)
+            st.success(msg) if ok else st.error(msg)
+
+    with tab3:
+        u = st.text_input("Username")
+        npw = st.text_input("New Password", type="password")
+        if st.button("Reset Password"):
+            ok, msg = reset_password(u, npw)
+            st.success(msg) if ok else st.error(msg)
 
 # ================= STUDENT =================
 elif st.session_state.role == "Student":
-
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
-
     df = build_features(df)
-    model = train_demand_model(df)
-    MAX_DEMAND = df["demand"].max()
+    model, acc = train_model(df)
+
+    st.info(f"📈 ML Demand Model Accuracy: **{acc}%**")
 
     if st.session_state.page == "search":
-        st.title("🚀 Internship Recommendations")
         skill = st.text_input("Skill")
         location = st.selectbox("Location", sorted(df["location"].dropna().unique()))
 
         if st.button("Search"):
-            ranked = []
-            for _, job in df.iterrows():
-                if skill.lower() in job["description"].lower():
-                    score = compute_match(job, skill, location, model, MAX_DEMAND)
-                    ranked.append((score, job))
+            df["score"] = model.predict(
+                df[["stipend", "skill_count", "company_score", "is_remote"]]
+            )
+            res = df[
+                df["title"].str.contains(skill, case=False, na=False)
+            ].sort_values("score", ascending=False).head(10)
 
-            for score, job in sorted(ranked, reverse=True)[:10]:
-                st.subheader(job["title"])
-                st.write(f"🏢 {job['company']} | 📍 {job['location']}")
-                st.progress(int(score))
-                st.caption(f"Match Score: {score}%")
-
-    elif st.session_state.page == "applied":
-        st.title("📌 Applied Internships")
-        conn = db()
-        apps = pd.read_sql(
-            "SELECT * FROM applications WHERE username=%s",
-            conn,
-            params=(st.session_state.user,)
-        )
-        conn.close()
-        st.dataframe(apps)
+            for _, j in res.iterrows():
+                st.markdown(
+                    f"### {j['title']}  \n🏢 {j['company']}  \n📍 {j['location']}"
+                )
 
 # ================= ADMIN =================
 elif st.session_state.role == "Admin":
-    st.title("📊 Admin Analytics")
+    st.title("📊 Skill Demand Trends")
 
     df = pd.read_csv("adzuna_internships_raw.csv")
-    df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
-    df = build_features(df)
+    skills = df["description"].apply(extract_skills).explode().value_counts()
 
-    # 🔹 Skill-demand trend
-    st.subheader("🔥 Skill Demand Trend")
-    skill_demand = (
-        df.assign(skill=df["description"].str.lower().str.split())
-        .explode("skill")
-        .groupby("skill")["demand"]
-        .mean()
-        .sort_values(ascending=False)
-        .head(15)
-    )
-    st.bar_chart(skill_demand)
-
-    # 🔹 Demand vs skill count
-    st.subheader("📈 Demand vs Skill Count")
-    st.line_chart(df.sort_values("skill_count")[["skill_count", "demand"]])
-
-    # 🔹 Applications by company
-    conn = db()
-    apps = pd.read_sql(
-        "SELECT company, COUNT(*) cnt FROM applications GROUP BY company",
-        conn
-    )
-    conn.close()
-    st.subheader("🏢 Company-wise Applications")
-    st.bar_chart(apps.set_index("company"))
+    st.bar_chart(skills)
