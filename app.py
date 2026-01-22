@@ -48,8 +48,10 @@ def db():
         database=st.secrets["db"]["name"],
         user=st.secrets["db"]["user"],
         password=st.secrets["db"]["password"],
-        port=st.secrets["db"]["port"]
+        port=st.secrets["db"]["port"],
+        sslmode="require"  
     )
+
 
 def init_db():
     conn = db()

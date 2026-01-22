@@ -1,4 +1,5 @@
 import sqlite3
+from turtle import st
 
 conn = sqlite3.connect("users.db")
 cur = conn.cursor()
@@ -36,5 +37,7 @@ CREATE TABLE IF NOT EXISTS search_logs (
 
 conn.commit()
 conn.close()
+import st
+st.success("✅ Connected to Neon DB successfully")
 
 print("✅ Database initialized successfully")
