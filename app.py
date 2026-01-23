@@ -20,43 +20,52 @@ for k, v in {
     "user": None,
     "role": None,
     "page": "search",
-    "resume_skills": []
+    "resume_skills": [],
+    "dark": False
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 # ================= THEME =================
-st.markdown("""
+bg = "#020617" if st.session_state.dark else "#f8fafc"
+card = "#020617" if st.session_state.dark else "white"
+text = "#e5e7eb" if st.session_state.dark else "#0f172a"
+sub = "#94a3b8" if st.session_state.dark else "#475569"
+
+st.markdown(f"""
 <style>
-body { background:#f8fafc; }
-.card {
-    background:white;
-    padding:24px;
-    border-radius:16px;
-    box-shadow:0 10px 25px rgba(0,0,0,0.08);
+body {{ background:{bg}; color:{text}; }}
+.card {{
+    background:{card};
+    padding:26px;
+    border-radius:18px;
+    box-shadow:0 12px 28px rgba(0,0,0,0.25);
     margin-bottom:22px;
-}
-.badge {
-    background:#e0f2fe;
-    color:#0369a1;
-    padding:6px 12px;
+}}
+.badge {{
+    background:#0ea5e9;
+    color:white;
+    padding:6px 14px;
     border-radius:999px;
     font-size:13px;
-}
-.title { font-size:22px; font-weight:700; }
-.sub { color:#475569; }
-button { background:#2563eb!important; color:white!important; }
+}}
+.title {{ font-size:22px; font-weight:700; }}
+.sub {{ color:{sub}; }}
+button {{
+    background:#2563eb!important;
+    color:white!important;
+    border-radius:10px!important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
 # ================= DATABASE =================
 def db():
-    return psycopg2.connect(st.secrets["db"]["url"])
+    return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
 
 def init_db():
     conn = db(); cur = conn.cursor()
 
-    # USERS
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -67,7 +76,6 @@ def init_db():
     );
     """)
 
-    # APPLICATIONS
     cur.execute("""
     CREATE TABLE IF NOT EXISTS applications (
         id SERIAL PRIMARY KEY,
@@ -78,7 +86,6 @@ def init_db():
     );
     """)
 
-    # ✅ FIX: add location column if missing
     cur.execute("""
     DO $$
     BEGIN
@@ -97,6 +104,12 @@ init_db()
 
 # ================= SIDEBAR =================
 with st.sidebar:
+    st.image(
+        "https://upload.wikimedia.org/wikipedia/commons/3/38/Indeed_logo.svg",
+        width=150
+    )
+    st.toggle("🌙 Dark Mode", key="dark")
+
     if st.session_state.user:
         st.success(f"👤 {st.session_state.user}")
         st.button("🔍 Search", on_click=lambda: st.session_state.update(page="search"))
@@ -146,12 +159,28 @@ def validate_login(username, password):
         return row[1]
     return None
 
+def reset_password(username, new_password):
+    if not strong_password(new_password):
+        return False, "Weak password"
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
+    if not cur.fetchone():
+        conn.close()
+        return False, "User not found"
+
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+    cur.execute(
+        "UPDATE users SET password=%s WHERE username=%s",
+        (psycopg2.Binary(hashed), username)
+    )
+    conn.commit(); conn.close()
+    return True, "Password updated"
+
 # ================= RESUME PARSER =================
 SKILL_BANK = [
-    "python","java","c++","sql","machine learning","deep learning","data science",
-    "ai","nlp","react","django","flask","spring","aws","azure","gcp",
-    "docker","kubernetes","html","css","javascript","power bi","tableau",
-    "excel","linux","git","devops","cyber security"
+    "python","java","sql","machine learning","data science","ai","react",
+    "django","flask","aws","docker","html","css","javascript","excel","git"
 ]
 
 def parse_resume(file):
@@ -187,7 +216,7 @@ if not st.session_state.user:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.title("🎓 Internship Portal")
 
-    tab1, tab2 = st.tabs(["Login", "Register"])
+    tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot Password"])
 
     with tab1:
         u = st.text_input("Username", key="lu")
@@ -210,6 +239,13 @@ if not st.session_state.user:
             ok, msg = register_user(u, e, p, role)
             st.success(msg) if ok else st.error(msg)
 
+    with tab3:
+        u = st.text_input("Username", key="fu")
+        npw = st.text_input("New Password", type="password", key="fp")
+        if st.button("Reset Password"):
+            ok, msg = reset_password(u, npw)
+            st.success(msg) if ok else st.error(msg)
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= STUDENT =================
@@ -224,21 +260,20 @@ elif st.session_state.role == "Student":
 
     if st.session_state.page == "search":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
+
         pdf = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
         if pdf:
             st.session_state.resume_skills = parse_resume(pdf)
-            st.success(f"Skills detected: {', '.join(st.session_state.resume_skills)}")
+            st.success(f"Detected skills: {', '.join(st.session_state.resume_skills)}")
 
         skill = st.text_input("Skill", value=", ".join(st.session_state.resume_skills))
         city = st.selectbox("Preferred City", ["All"] + sorted(df["location"].dropna().unique()))
 
         if st.button("Search Internships"):
             keywords = [s.strip().lower() for s in skill.split(",") if s.strip()]
-            results = df[
-                df["description"].str.lower().apply(
-                    lambda x: any(k in x for k in keywords)
-                )
-            ] if keywords else df
+            results = df if not keywords else df[
+                df["description"].str.lower().apply(lambda x: any(k in x for k in keywords))
+            ]
 
             if city != "All":
                 results = results[results["location"].str.contains(city, case=False)]
@@ -256,14 +291,17 @@ elif st.session_state.role == "Student":
                 <span class='badge'>Demand {int(j['score'])}</span>
                 """, unsafe_allow_html=True)
 
-                if st.button("Apply", key=f"a{i}"):
+                if st.button("Apply", key=f"apply_{i}"):
                     conn = db(); cur = conn.cursor()
                     cur.execute(
                         "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
                         (st.session_state.user, j["title"], j["company"], j["location"])
                     )
                     conn.commit(); conn.close()
-                    st.success("Applied successfully")
+                    st.success("✅ Applied successfully")
+                    st.session_state.page = "applied"
+                    st.rerun()
+
                 st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
@@ -272,11 +310,11 @@ elif st.session_state.role == "Student":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         conn = db()
         apps = pd.read_sql(
-            "SELECT job_title, company, location, applied_at FROM applications WHERE username=%s",
+            "SELECT job_title, company, location, applied_at FROM applications WHERE username=%s ORDER BY applied_at DESC",
             conn, params=(st.session_state.user,)
         )
         conn.close()
-        st.dataframe(apps)
+        st.dataframe(apps, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= ADMIN =================
@@ -287,7 +325,6 @@ elif st.session_state.role == "Admin":
     df["description"] = df["description"].fillna("")
     df = build_features(df)
 
-    # Skill trend forecasting (proxy)
     skill_counts = {}
     for desc in df["description"]:
         for s in SKILL_BANK:
