@@ -135,7 +135,8 @@ def init_db():
     """)
     conn.commit(); conn.close()
 
-init_db()
+# Database already initialized
+# init_db()
 
 # ================= SIDEBAR =================
 with st.sidebar:
