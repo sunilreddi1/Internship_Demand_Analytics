@@ -284,6 +284,6 @@ else:
         apps = pd.read_sql(query, st.secrets["db"]["url"], params=(current_user(),))
 
         if apps.empty:
-    st.info("You have not applied to any internships yet.")
-else:
-    st.dataframe(apps, use_container_width=True)
+            st.info("You have not applied to any internships yet.")
+        else:
+            st.dataframe(apps, use_container_width=True)
