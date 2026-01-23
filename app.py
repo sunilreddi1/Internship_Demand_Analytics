@@ -320,7 +320,10 @@ if not st.session_state.user:
         p = st.text_input("New Password", type="password")
         if st.button("Create Account"):
             ok, msg = register_user(u, e, p, "Student")
-            st.success(msg) if ok else st.error(msg)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -331,7 +334,9 @@ else:
         model, acc = train_model(df)
         st.info(f"📈 ML Demand Accuracy: {acc}%")
 
-        if st.session_state.page == "search":
+        tab1, tab2 = st.tabs(["🔎 Search Internships", "📋 My Applications"])
+
+        with tab1:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
 
             pdf = st.file_uploader("📄 Upload Resume (PDF)", type=["pdf"])
@@ -390,8 +395,7 @@ else:
                                     )
                             conn.commit()
                             conn.close()
-                            st.toast("🎉 Applied successfully!", icon="✅")
-                            st.session_state.page = "applied"
+                            st.success("🎉 Applied successfully!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Application failed: {e}")
@@ -400,7 +404,7 @@ else:
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-        elif st.session_state.page == "applied":
+        with tab2:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             try:
                 conn = db()
@@ -435,7 +439,7 @@ else:
             except Exception as e:
                 st.error(f"Failed to load applications: {e}")
                 apps = pd.DataFrame()  # Empty dataframe as fallback
-            st.dataframe(apps, use_container_width=True)
+            st.dataframe(apps, width='stretch')
 
             st.markdown("</div>", unsafe_allow_html=True)
 

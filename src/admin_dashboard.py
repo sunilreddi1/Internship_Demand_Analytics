@@ -68,7 +68,7 @@ def show_admin_dashboard():
     # Applications Overview
     st.subheader("📋 Recent Applications")
     if not apps.empty:
-        st.dataframe(apps.head(10), use_container_width=True)
+        st.dataframe(apps.head(10), width='stretch')
     else:
         st.info("No applications yet")
 
