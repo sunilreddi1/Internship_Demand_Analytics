@@ -110,10 +110,16 @@ button:hover {{
 
 # ================= DATABASE =================
 def db():
+    # Check if we've already shown the fallback warning this session
+    if not hasattr(st.session_state, 'db_fallback_shown'):
+        st.session_state.db_fallback_shown = False
+
     try:
         return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
     except Exception as e:
-        st.warning(f"Database connection failed: {e}. Using local SQLite for testing.")
+        if not st.session_state.db_fallback_shown:
+            st.info("🔄 Using local database for testing. Your data will be stored locally.")
+            st.session_state.db_fallback_shown = True
         # Fallback to local SQLite for development
         import sqlite3
         return sqlite3.connect("users.db")
@@ -367,11 +373,21 @@ else:
                                     "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
                                     (current_user(), j["title"], j["company"], j["location"])
                                 )
-                            else:  # SQLite
-                                cur.execute(
-                                    "INSERT INTO applications (username,job_title,company,location) VALUES (?,?,?,?)",
-                                    (current_user(), j["title"], j["company"], j["location"])
-                                )
+                            else:  # SQLite - check schema and adapt
+                                # Check if table has correct columns
+                                cur.execute("PRAGMA table_info(applications)")
+                                columns = [col[1] for col in cur.fetchall()]
+                                if 'job_title' in columns:
+                                    cur.execute(
+                                        "INSERT INTO applications (username,job_title,company,location) VALUES (?,?,?,?)",
+                                        (current_user(), j["title"], j["company"], j["location"])
+                                    )
+                                else:
+                                    # Use existing schema
+                                    cur.execute(
+                                        "INSERT INTO applications (username,job_id,status) VALUES (?,?,?)",
+                                        (current_user(), j["title"], "Applied")
+                                    )
                             conn.commit()
                             conn.close()
                             st.toast("🎉 Applied successfully!", icon="✅")
@@ -395,13 +411,26 @@ else:
                         WHERE LOWER(username)=%s
                         ORDER BY applied_at DESC
                     """, conn, params=(current_user(),))
-                else:  # SQLite
-                    apps = pd.read_sql_query("""
-                        SELECT job_title, company, location, applied_at
-                        FROM applications
-                        WHERE LOWER(username)=LOWER(?)
-                        ORDER BY applied_at DESC
-                    """, conn, params=(current_user(),))
+                else:  # SQLite - check schema and adapt
+                    cur = conn.cursor()
+                    cur.execute("PRAGMA table_info(applications)")
+                    columns = [col[1] for col in cur.fetchall()]
+                    
+                    if 'job_title' in columns:
+                        apps = pd.read_sql_query("""
+                            SELECT job_title, company, location, applied_at
+                            FROM applications
+                            WHERE LOWER(username)=LOWER(?)
+                            ORDER BY applied_at DESC
+                        """, conn, params=(current_user(),))
+                    else:
+                        # Use existing schema
+                        apps = pd.read_sql_query("""
+                            SELECT job_id as job_title, 'Applied' as company, '' as location, id as applied_at
+                            FROM applications
+                            WHERE LOWER(username)=LOWER(?)
+                            ORDER BY id DESC
+                        """, conn, params=(current_user(),))
                 conn.close()
             except Exception as e:
                 st.error(f"Failed to load applications: {e}")

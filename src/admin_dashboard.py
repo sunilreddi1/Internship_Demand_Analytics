@@ -4,10 +4,17 @@ import psycopg2
 from .preprocess import preprocess_data
 
 def db():
+    # Check if we've already shown the fallback warning this session
+    if not hasattr(st.session_state, 'db_fallback_shown'):
+        st.session_state.db_fallback_shown = False
+
     try:
         return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
     except Exception as e:
-        st.warning(f"Database connection failed: {e}. Using local SQLite for testing.")
+        if not st.session_state.db_fallback_shown:
+            st.info("🔄 Using local database for testing. Your data will be stored locally.")
+            st.session_state.db_fallback_shown = True
+        # Fallback to local SQLite for development
         import sqlite3
         return sqlite3.connect("users.db")
 
@@ -26,12 +33,24 @@ def show_admin_dashboard():
                 FROM applications
                 ORDER BY applied_at DESC
             """, conn)
-        else:  # SQLite
-            apps = pd.read_sql_query("""
-                SELECT job_title, company, location, applied_at, username
-                FROM applications
-                ORDER BY applied_at DESC
-            """, conn)
+        else:  # SQLite - check schema and adapt
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(applications)")
+            columns = [col[1] for col in cur.fetchall()]
+            
+            if 'job_title' in columns:
+                apps = pd.read_sql_query("""
+                    SELECT job_title, company, location, applied_at, username
+                    FROM applications
+                    ORDER BY applied_at DESC
+                """, conn)
+            else:
+                # Use existing schema
+                apps = pd.read_sql_query("""
+                    SELECT job_id as job_title, status as company, '' as location, id as applied_at, username
+                    FROM applications
+                    ORDER BY id DESC
+                """, conn)
         conn.close()
     except Exception as e:
         st.error(f"Failed to load applications data: {e}")
