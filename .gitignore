@@ -3,3 +3,7 @@ __pycache__/
 .streamlit/secrets.toml
 *.pyc
 .env
+*.db
+users.db
+*.sqlite
+*.sqlite3
