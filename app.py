@@ -26,6 +26,10 @@ for k, v in {
     if k not in st.session_state:
         st.session_state[k] = v
 
+# ✅ FIX: normalized username helper
+def current_user():
+    return st.session_state.user.strip().lower()
+
 # ================= THEME =================
 bg = "#020617" if st.session_state.dark else "#f8fafc"
 card = "#020617" if st.session_state.dark else "white"
@@ -104,10 +108,7 @@ init_db()
 
 # ================= SIDEBAR =================
 with st.sidebar:
-    st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/3/38/Indeed_logo.svg",
-        width=150
-    )
+    st.image("https://upload.wikimedia.org/wikipedia/commons/3/38/Indeed_logo.svg", width=150)
     st.toggle("🌙 Dark Mode", key="dark")
 
     if st.session_state.user:
@@ -137,6 +138,9 @@ def register_user(username, email, password, role):
     if not strong_password(password):
         return False, "Password must include A-Z, a-z, 0-9 & symbol"
 
+    username = username.strip().lower()
+    email = email.strip().lower()
+
     conn = db(); cur = conn.cursor()
     cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
     if cur.fetchone():
@@ -152,6 +156,7 @@ def register_user(username, email, password, role):
     return True, "Registration successful"
 
 def validate_login(username, password):
+    username = username.strip().lower()
     conn = db(); cur = conn.cursor()
     cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
     row = cur.fetchone(); conn.close()
@@ -163,6 +168,7 @@ def reset_password(username, new_password):
     if not strong_password(new_password):
         return False, "Weak password"
 
+    username = username.strip().lower()
     conn = db(); cur = conn.cursor()
     cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
     if not cur.fetchone():
@@ -224,7 +230,7 @@ if not st.session_state.user:
         if st.button("Login"):
             r = validate_login(u, p)
             if r:
-                st.session_state.user = u
+                st.session_state.user = u.strip().lower()
                 st.session_state.role = r
                 st.rerun()
             else:
@@ -295,7 +301,7 @@ elif st.session_state.role == "Student":
                     conn = db(); cur = conn.cursor()
                     cur.execute(
                         "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
-                        (st.session_state.user, j["title"], j["company"], j["location"])
+                        (current_user(), j["title"], j["company"], j["location"])
                     )
                     conn.commit(); conn.close()
                     st.success("✅ Applied successfully")
@@ -310,11 +316,22 @@ elif st.session_state.role == "Student":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         conn = db()
         apps = pd.read_sql(
-            "SELECT job_title, company, location, applied_at FROM applications WHERE username=%s ORDER BY applied_at DESC",
-            conn, params=(st.session_state.user,)
+            """
+            SELECT job_title, company, location, applied_at
+            FROM applications
+            WHERE LOWER(username) = %s
+            ORDER BY applied_at DESC
+            """,
+            conn,
+            params=(current_user(),)
         )
         conn.close()
-        st.dataframe(apps, use_container_width=True)
+
+        if apps.empty:
+            st.info("You have not applied to any internships yet.")
+        else:
+            st.dataframe(apps, use_container_width=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= ADMIN =================
