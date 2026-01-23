@@ -110,30 +110,65 @@ button:hover {{
 
 # ================= DATABASE =================
 def db():
-    return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
+    try:
+        return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
+    except Exception as e:
+        st.warning(f"Database connection failed: {e}. Using local SQLite for testing.")
+        # Fallback to local SQLite for development
+        import sqlite3
+        return sqlite3.connect("users.db")
 
 def init_db():
-    conn = db(); cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE,
-        email TEXT UNIQUE,
-        password BYTEA,
-        role TEXT
-    );
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS applications (
-        id SERIAL PRIMARY KEY,
-        username TEXT,
-        job_title TEXT,
-        company TEXT,
-        location TEXT,
-        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-    conn.commit(); conn.close()
+    try:
+        conn = db()
+        cur = conn.cursor()
+
+        # Check if it's PostgreSQL (has autocommit) or SQLite
+        if hasattr(conn, 'autocommit'):  # PostgreSQL
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE,
+                email TEXT UNIQUE,
+                password BYTEA,
+                role TEXT
+            );
+            """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS applications (
+                id SERIAL PRIMARY KEY,
+                username TEXT,
+                job_title TEXT,
+                company TEXT,
+                location TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+        else:  # SQLite
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE,
+                password TEXT,
+                role TEXT
+            );
+            """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                job_title TEXT,
+                company TEXT,
+                location TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+
+        conn.commit()
+        conn.close()
+        print("Database initialized successfully")
+    except Exception as e:
+        print(f"Database initialization failed: {e}")
 
 # Database already initialized
 # init_db()
@@ -187,28 +222,62 @@ def register_user(username, email, password, role):
     username = username.lower().strip()
     email = email.lower().strip()
 
-    conn = db(); cur = conn.cursor()
-    cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
-    if cur.fetchone():
-        conn.close()
-        return False, "User already exists"
+    try:
+        conn = db()
+        cur = conn.cursor()
 
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-    cur.execute(
-        "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
-        (username, email, psycopg2.Binary(hashed), role)
-    )
-    conn.commit(); conn.close()
-    return True, "Registered successfully"
+        # Check if PostgreSQL (has autocommit) or SQLite
+        if hasattr(conn, 'autocommit'):  # PostgreSQL
+            cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
+            if cur.fetchone():
+                conn.close()
+                return False, "User already exists"
+
+            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+            cur.execute(
+                "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
+                (username, email, psycopg2.Binary(hashed), role)
+            )
+        else:  # SQLite
+            cur.execute("SELECT 1 FROM users WHERE username=?", (username,))
+            if cur.fetchone():
+                conn.close()
+                return False, "User already exists"
+
+            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+            cur.execute(
+                "INSERT INTO users (username,password,role) VALUES (?,?,?)",
+                (username, hashed.decode('utf-8'), role)
+            )
+
+        conn.commit()
+        conn.close()
+        return True, "Registered successfully"
+    except Exception as e:
+        return False, f"Registration failed: {e}"
 
 def validate_login(username, password):
     username = username.lower().strip()
-    conn = db(); cur = conn.cursor()
-    cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
-    row = cur.fetchone(); conn.close()
-    if row and bcrypt.checkpw(password.encode(), bytes(row[0])):
-        return row[1]
-    return None
+    try:
+        conn = db()
+        cur = conn.cursor()
+
+        if hasattr(conn, 'autocommit'):  # PostgreSQL
+            cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
+            row = cur.fetchone()
+            conn.close()
+            if row and bcrypt.checkpw(password.encode(), bytes(row[0])):
+                return row[1]
+        else:  # SQLite
+            cur.execute("SELECT password, role FROM users WHERE username=?", (username,))
+            row = cur.fetchone()
+            conn.close()
+            if row and bcrypt.checkpw(password.encode(), row[0].encode('utf-8')):
+                return row[1]
+        return None
+    except Exception as e:
+        st.error(f"Login failed: {e}")
+        return None
 
 # ================= RESUME PARSER =================
 SKILL_BANK = [
@@ -290,15 +359,26 @@ else:
                     """, unsafe_allow_html=True)
 
                     if st.button("Apply 🚀", key=f"apply_{i}"):
-                        conn = db(); cur = conn.cursor()
-                        cur.execute(
-                            "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
-                            (current_user(), j["title"], j["company"], j["location"])
-                        )
-                        conn.commit(); conn.close()
-                        st.toast("🎉 Applied successfully!", icon="✅")
-                        st.session_state.page = "applied"
-                        st.rerun()
+                        try:
+                            conn = db()
+                            cur = conn.cursor()
+                            if hasattr(conn, 'autocommit'):  # PostgreSQL
+                                cur.execute(
+                                    "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
+                                    (current_user(), j["title"], j["company"], j["location"])
+                                )
+                            else:  # SQLite
+                                cur.execute(
+                                    "INSERT INTO applications (username,job_title,company,location) VALUES (?,?,?,?)",
+                                    (current_user(), j["title"], j["company"], j["location"])
+                                )
+                            conn.commit()
+                            conn.close()
+                            st.toast("🎉 Applied successfully!", icon="✅")
+                            st.session_state.page = "applied"
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Application failed: {e}")
 
                     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -306,12 +386,26 @@ else:
 
         elif st.session_state.page == "applied":
             st.markdown("<div class='card'>", unsafe_allow_html=True)
-            apps = pd.read_sql("""
-                SELECT job_title, company, location, applied_at
-                FROM applications
-                WHERE LOWER(username)=%s
-                ORDER BY applied_at DESC
-            """, st.secrets["db"]["url"], params=(current_user(),))
+            try:
+                conn = db()
+                if hasattr(conn, 'autocommit'):  # PostgreSQL
+                    apps = pd.read_sql("""
+                        SELECT job_title, company, location, applied_at
+                        FROM applications
+                        WHERE LOWER(username)=%s
+                        ORDER BY applied_at DESC
+                    """, conn, params=(current_user(),))
+                else:  # SQLite
+                    apps = pd.read_sql_query("""
+                        SELECT job_title, company, location, applied_at
+                        FROM applications
+                        WHERE LOWER(username)=LOWER(?)
+                        ORDER BY applied_at DESC
+                    """, conn, params=(current_user(),))
+                conn.close()
+            except Exception as e:
+                st.error(f"Failed to load applications: {e}")
+                apps = pd.DataFrame()  # Empty dataframe as fallback
             st.dataframe(apps, use_container_width=True)
 
             st.markdown("</div>", unsafe_allow_html=True)

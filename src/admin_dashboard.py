@@ -1,6 +1,15 @@
 import streamlit as st
 import pandas as pd
+import psycopg2
 from .preprocess import preprocess_data
+
+def db():
+    try:
+        return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
+    except Exception as e:
+        st.warning(f"Database connection failed: {e}. Using local SQLite for testing.")
+        import sqlite3
+        return sqlite3.connect("users.db")
 
 def show_admin_dashboard():
     st.title("📊 Admin Dashboard – Internship Analytics")
@@ -9,11 +18,24 @@ def show_admin_dashboard():
     df = preprocess_data()
 
     # Load applications data
-    apps = pd.read_sql("""
-        SELECT job_title, company, location, applied_at, username
-        FROM applications
-        ORDER BY applied_at DESC
-    """, st.secrets["db"]["url"])
+    try:
+        conn = db()
+        if hasattr(conn, 'autocommit'):  # PostgreSQL
+            apps = pd.read_sql("""
+                SELECT job_title, company, location, applied_at, username
+                FROM applications
+                ORDER BY applied_at DESC
+            """, conn)
+        else:  # SQLite
+            apps = pd.read_sql_query("""
+                SELECT job_title, company, location, applied_at, username
+                FROM applications
+                ORDER BY applied_at DESC
+            """, conn)
+        conn.close()
+    except Exception as e:
+        st.error(f"Failed to load applications data: {e}")
+        apps = pd.DataFrame()  # Empty dataframe as fallback
 
     # Metrics
     c1, c2, c3, c4 = st.columns(4)
