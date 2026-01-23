@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 import re
+import PyPDF2
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -18,7 +19,8 @@ st.set_page_config(
 for k, v in {
     "user": None,
     "role": None,
-    "page": "search"
+    "page": "search",
+    "resume_skills": []
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -29,17 +31,20 @@ st.markdown("""
 body { background:#f8fafc; }
 .card {
     background:white;
-    padding:22px;
-    border-radius:14px;
-    box-shadow:0 6px 20px rgba(0,0,0,0.06);
-    margin-bottom:20px;
+    padding:24px;
+    border-radius:16px;
+    box-shadow:0 10px 25px rgba(0,0,0,0.08);
+    margin-bottom:22px;
 }
 .badge {
     background:#e0f2fe;
     color:#0369a1;
-    padding:6px 10px;
+    padding:6px 12px;
     border-radius:999px;
+    font-size:13px;
 }
+.title { font-size:22px; font-weight:700; }
+.sub { color:#475569; }
 button { background:#2563eb!important; color:white!important; }
 </style>
 """, unsafe_allow_html=True)
@@ -50,16 +55,16 @@ with st.sidebar:
         st.success(f"👤 {st.session_state.user}")
         st.button("🔍 Search", on_click=lambda: st.session_state.update(page="search"))
         st.button("📌 Applied", on_click=lambda: st.session_state.update(page="applied"))
+        if st.session_state.role == "Admin":
+            st.button("📊 Admin Analytics", on_click=lambda: st.session_state.update(page="admin"))
         if st.button("🚪 Logout"):
             st.session_state.user = None
-            st.session_state.role = None
             st.session_state.page = "search"
             st.rerun()
 
 # ================= DATABASE =================
 def db():
     return psycopg2.connect(st.secrets["db"]["url"])
-
 
 def init_db():
     conn = db(); cur = conn.cursor()
@@ -97,7 +102,7 @@ def strong_password(p):
 # ================= AUTH =================
 def register_user(username, email, password, role):
     if not strong_password(password):
-        return False, "Weak password"
+        return False, "Password must include A-Z, a-z, 0-9 & symbol"
 
     conn = db(); cur = conn.cursor()
     cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
@@ -120,6 +125,27 @@ def validate_login(username, password):
     if row and bcrypt.checkpw(password.encode(), bytes(row[0])):
         return row[1]
     return None
+
+# ================= RESUME PARSER =================
+SKILL_BANK = [
+    "python","java","c++","sql","machine learning","deep learning","data science",
+    "ai","nlp","opencv","react","node","django","flask","spring",
+    "aws","azure","gcp","cloud","docker","kubernetes","html","css","javascript",
+    "power bi","tableau","excel","linux","git","devops","cyber security"
+]
+
+def parse_resume(file):
+    reader = PyPDF2.PdfReader(file)
+    text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
+    return sorted(set([s for s in SKILL_BANK if s in text]))
+
+# ================= RESUME–INTERNSHIP SIMILARITY (NEW) =================
+def similarity_score(resume_skills, description):
+    if not resume_skills:
+        return 0
+    text = description.lower()
+    matches = sum(1 for s in resume_skills if s in text)
+    return round((matches / len(resume_skills)) * 100, 2)
 
 # ================= ML MODEL =================
 def build_features(df):
@@ -144,7 +170,7 @@ def train_model(df):
     acc = r2_score(y, model.predict(X)) * 100
     return model, round(acc, 2)
 
-# ================= LOGIN UI =================
+# ================= LOGIN =================
 if not st.session_state.user:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.title("🎓 Internship Portal")
@@ -167,15 +193,14 @@ if not st.session_state.user:
         u = st.text_input("Username", key="ru")
         e = st.text_input("Email", key="re")
         p = st.text_input("Password", type="password", key="rp")
-        role = st.selectbox("Role", ["Student"], key="rr")
         if st.button("Register"):
-            ok, msg = register_user(u, e, p, role)
+            ok, msg = register_user(u, e, p, "Student")
             st.success(msg) if ok else st.error(msg)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= STUDENT =================
-else:
+elif st.session_state.page in ["search", "applied"]:
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
@@ -186,35 +211,36 @@ else:
 
     if st.session_state.page == "search":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("🔍 Find & Apply Internships")
+        pdf = st.file_uploader("📄 Upload Resume (Optional)", type=["pdf"])
+        if pdf:
+            st.session_state.resume_skills = parse_resume(pdf)
+            st.success(f"Skills detected: {', '.join(st.session_state.resume_skills)}")
 
-        skill = st.text_input("Skill (Python, Java, ML...)")
-        location = st.selectbox("Preferred Location", sorted(df["location"].dropna().unique()))
+        skill = st.text_input("Skill", value=", ".join(st.session_state.resume_skills))
+        city = st.selectbox("Preferred City", ["All"] + sorted(df["location"].dropna().unique()))
 
-        if st.button("Recommend Best Internships"):
-            df["score"] = df.apply(
-                lambda r: model.predict(pd.DataFrame([[
-                    r["stipend"], r["skill_count"],
-                    r["company_score"], r["is_remote"]
-                ]]))[0], axis=1
+        if st.button("Search Internships"):
+            results = df.copy()
+            if city != "All":
+                results = results[results["location"].str.contains(city, case=False)]
+
+            results["score"] = model.predict(
+                results[["stipend","skill_count","company_score","is_remote"]]
             )
 
-            recs = df[
-                df["description"].str.contains(skill, case=False) &
-                df["location"].str.contains(location, case=False)
-            ].sort_values("score", ascending=False).head(10)
-
-            for i, j in recs.iterrows():
+            for i, j in results.sort_values("score", ascending=False).head(10).iterrows():
+                sim = similarity_score(st.session_state.resume_skills, j["description"])
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
                 st.markdown(f"""
-                ### {j['title']}
-                🏢 **{j['company']}**  
-                📍 {j['location']}  
-                💰 Stipend: ₹{int(j['stipend'])}
-                <span class='badge'>Demand Score: {int(j['score'])}</span>
+                <div class='title'>{j['title']}</div>
+                <div class='sub'>🏢 {j['company']} | 📍 {j['location']}</div>
+                💰 ₹{int(j['stipend'])}
+                <br>
+                <span class='badge'>Demand {int(j['score'])}</span>
+                <span class='badge'>Resume Match {sim}%</span>
                 """, unsafe_allow_html=True)
 
-                if st.button("Apply", key=f"apply_{i}"):
+                if st.button("Apply", key=f"a{i}"):
                     conn = db(); cur = conn.cursor()
                     cur.execute(
                         "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
@@ -228,12 +254,32 @@ else:
 
     elif st.session_state.page == "applied":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("📌 Applied Internships")
         conn = db()
         apps = pd.read_sql(
-            "SELECT job_title, company, location, applied_at FROM applications WHERE username=%s ORDER BY applied_at DESC",
+            "SELECT job_title, company, location, applied_at FROM applications WHERE username=%s",
             conn, params=(st.session_state.user,)
         )
         conn.close()
         st.dataframe(apps)
         st.markdown("</div>", unsafe_allow_html=True)
+
+# ================= ADMIN ANALYTICS (NEW) =================
+elif st.session_state.page == "admin":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.title("📊 Admin Analytics Dashboard")
+
+    conn = db()
+    users = pd.read_sql("SELECT COUNT(*) FROM users", conn).iloc[0,0]
+    apps = pd.read_sql("SELECT COUNT(*) FROM applications", conn).iloc[0,0]
+    by_city = pd.read_sql("SELECT location, COUNT(*) cnt FROM applications GROUP BY location", conn)
+    by_company = pd.read_sql("SELECT company, COUNT(*) cnt FROM applications GROUP BY company", conn)
+    conn.close()
+
+    st.metric("Total Users", users)
+    st.metric("Total Applications", apps)
+    st.subheader("📍 Applications by City")
+    st.bar_chart(by_city.set_index("location"))
+    st.subheader("🏢 Company-wise Applications")
+    st.bar_chart(by_company.set_index("company"))
+
+    st.markdown("</div>", unsafe_allow_html=True)
