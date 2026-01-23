@@ -1,47 +1,67 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-import numpy as np
-from sklearn.linear_model import LinearRegression
-import matplotlib.pyplot as plt
+from .preprocess import preprocess_data
 
 def show_admin_dashboard():
     st.title("📊 Admin Dashboard – Internship Analytics")
 
-    conn = sqlite3.connect("users.db")
-    df = pd.read_sql("SELECT * FROM search_logs", conn)
-    conn.close()
+    # Load internship data
+    df = preprocess_data()
 
-    if df.empty:
-        st.warning("No search data yet")
-        return
+    # Load applications data
+    apps = pd.read_sql("""
+        SELECT job_title, company, location, applied_at, username
+        FROM applications
+        ORDER BY applied_at DESC
+    """, st.secrets["db"]["url"])
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Searches", len(df))
-    c2.metric("Unique Users", df["username"].nunique())
-    c3.metric("Top Skill", df["skill"].value_counts().idxmax())
+    # Metrics
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Internships", len(df))
+    c2.metric("Total Applications", len(apps))
+    c3.metric("Unique Students", apps["username"].nunique() if not apps.empty else 0)
+    c4.metric("Avg Stipend", f"₹{int(df['stipend'].mean())}")
 
-    st.subheader("🔥 Top Skills")
-    st.bar_chart(df["skill"].value_counts().head(5))
+    st.divider()
 
-    st.subheader("📍 Top Locations")
-    st.bar_chart(df["location"].value_counts().head(5))
+    # Applications Overview
+    st.subheader("📋 Recent Applications")
+    if not apps.empty:
+        st.dataframe(apps.head(10), use_container_width=True)
+    else:
+        st.info("No applications yet")
 
-    st.subheader("📈 Search Trend")
-    df["date"] = pd.to_datetime(df["time"]).dt.date
-    daily = df.groupby("date").size()
-    st.line_chart(daily)
+    # Popular Companies
+    st.subheader("🏢 Popular Companies")
+    if not apps.empty:
+        company_counts = apps["company"].value_counts().head(10)
+        st.bar_chart(company_counts)
+    else:
+        st.bar_chart(df["company"].value_counts().head(10))
 
-    st.subheader("🔮 Demand Prediction (ML)")
-    X = np.arange(len(daily)).reshape(-1, 1)
-    y = daily.values
-    model = LinearRegression().fit(X, y)
+    # Location Distribution
+    st.subheader("📍 Location Distribution")
+    if not apps.empty:
+        location_counts = apps["location"].value_counts().head(10)
+        st.bar_chart(location_counts)
+    else:
+        st.bar_chart(df["location"].value_counts().head(10))
 
-    future = model.predict(
-        np.arange(len(y), len(y) + 7).reshape(-1, 1)
-    )
+    # Skill Demand Analysis
+    st.subheader("🔥 Skill Demand Analysis")
+    skill_counts = {}
+    for desc in df["description"].fillna(""):
+        for skill in ["python","java","sql","machine learning","data science","ai","react","django","flask","aws","docker","html","css","javascript"]:
+            if skill in desc.lower():
+                skill_counts[skill] = skill_counts.get(skill, 0) + 1
 
-    fig, ax = plt.subplots()
-    ax.plot(list(y) + list(future), marker="o")
-    ax.axvline(len(y)-1, linestyle="--")
-    st.pyplot(fig)
+    if skill_counts:
+        skill_df = pd.DataFrame(list(skill_counts.items()), columns=["Skill","Count"]).sort_values("Count", ascending=False)
+        st.bar_chart(skill_df.set_index("Skill"))
+    else:
+        st.info("No skill data available")
+
+    # Stipend Distribution
+    st.subheader("💰 Stipend Distribution")
+    stipend_bins = pd.cut(df["stipend"], bins=[0,5000,10000,15000,20000,50000], labels=["<5K","5-10K","10-15K","15-20K","20K+"])
+    st.bar_chart(stipend_bins.value_counts().sort_index())

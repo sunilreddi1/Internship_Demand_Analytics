@@ -1,22 +1,12 @@
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
+import os
+from .demand_model import build_features
 
 def preprocess_data():
-    df = pd.read_csv("adzuna_internships_raw.csv")
-
-    for col in ["title", "company", "location", "description"]:
-        if col not in df.columns:
-            df[col] = "Unknown"
-
+    # Get the directory of this file and go up one level to find the CSV
+    csv_path = os.path.join(os.path.dirname(__file__), "..", "adzuna_internships_raw.csv")
+    df = pd.read_csv(csv_path)
+    df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
-    df["location"] = df["location"].fillna("Unknown")
-
-    if "salary_min" in df.columns:
-        df["stipend"] = df["salary_min"].fillna(df["salary_min"].median())
-    else:
-        df["stipend"] = 8000
-
-    le = LabelEncoder()
-    df["location_enc"] = le.fit_transform(df["location"])
-
+    df = build_features(df)
     return df
