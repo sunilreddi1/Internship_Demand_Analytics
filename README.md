@@ -62,9 +62,38 @@ Output:
 - Internship recommendations for students
 - Predicted internship demand
 - Internship analytics dashboard
-- Live internship search results 
+- Live internship search results
+
+----------------------------------------
+
+## Deployment Instructions
+
+### Local Development:
+1. Clone the repository
+2. Install dependencies: `pip install -r requirements.txt`
+3. Create `.streamlit/secrets.toml` with database configuration:
+   ```toml
+   [db]
+   url = "postgresql://neondb_owner:npg_Oigm2nBb0Jqk@ep-orange-band-ah7k9fu3-pooler.c-3.us-east-1.aws.neon.tech:5432/neondb?sslmode=require"
+   ```
+4. Run: `streamlit run app.py`
+
+### Streamlit Cloud Deployment:
+1. Connect your GitHub repository to Streamlit Cloud
+2. Set secrets in Streamlit Cloud dashboard:
+   ```
+   [db]
+   url = "postgresql://neondb_owner:npg_Oigm2nBb0Jqk@ep-orange-band-ah7k9fu3-pooler.c-3.us-east-1.aws.neon.tech:5432/neondb?sslmode=require"
+   ```
+3. Deploy from main branch with `app.py` as entry point
+
+### Database Configuration:
+- **Production**: PostgreSQL (Neon)
+- **Development**: Automatic fallback to SQLite
+- **Secrets**: Configure in `.streamlit/secrets.toml` (local) or Streamlit Cloud settings (production)
+
 ## Live Demo
-Streamlit App:  
+Streamlit App:
 https://internship-demand-analytics.streamlit.app
 
 
