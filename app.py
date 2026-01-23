@@ -49,25 +49,14 @@ button { background:#2563eb!important; color:white!important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= SIDEBAR =================
-with st.sidebar:
-    if st.session_state.user:
-        st.success(f"👤 {st.session_state.user}")
-        st.button("🔍 Search", on_click=lambda: st.session_state.update(page="search"))
-        st.button("📌 Applied", on_click=lambda: st.session_state.update(page="applied"))
-        if st.session_state.role == "Admin":
-            st.button("📊 Admin Analytics", on_click=lambda: st.session_state.update(page="admin"))
-        if st.button("🚪 Logout"):
-            st.session_state.user = None
-            st.session_state.page = "search"
-            st.rerun()
-
 # ================= DATABASE =================
 def db():
     return psycopg2.connect(st.secrets["db"]["url"])
 
 def init_db():
     conn = db(); cur = conn.cursor()
+
+    # USERS
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -76,18 +65,49 @@ def init_db():
         password BYTEA,
         role TEXT
     );
+    """)
+
+    # APPLICATIONS
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS applications (
         id SERIAL PRIMARY KEY,
         username TEXT,
         job_title TEXT,
         company TEXT,
-        location TEXT,
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
+
+    # ✅ FIX: add location column if missing
+    cur.execute("""
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='applications' AND column_name='location'
+        ) THEN
+            ALTER TABLE applications ADD COLUMN location TEXT;
+        END IF;
+    END$$;
+    """)
+
     conn.commit(); conn.close()
 
 init_db()
+
+# ================= SIDEBAR =================
+with st.sidebar:
+    if st.session_state.user:
+        st.success(f"👤 {st.session_state.user}")
+        st.button("🔍 Search", on_click=lambda: st.session_state.update(page="search"))
+        st.button("📌 Applied", on_click=lambda: st.session_state.update(page="applied"))
+        if st.session_state.role == "Admin":
+            st.button("📊 Admin Dashboard", on_click=lambda: st.session_state.update(page="admin"))
+        if st.button("🚪 Logout"):
+            st.session_state.user = None
+            st.session_state.role = None
+            st.session_state.page = "search"
+            st.rerun()
 
 # ================= PASSWORD =================
 def strong_password(p):
@@ -129,23 +149,15 @@ def validate_login(username, password):
 # ================= RESUME PARSER =================
 SKILL_BANK = [
     "python","java","c++","sql","machine learning","deep learning","data science",
-    "ai","nlp","opencv","react","node","django","flask","spring",
-    "aws","azure","gcp","cloud","docker","kubernetes","html","css","javascript",
-    "power bi","tableau","excel","linux","git","devops","cyber security"
+    "ai","nlp","react","django","flask","spring","aws","azure","gcp",
+    "docker","kubernetes","html","css","javascript","power bi","tableau",
+    "excel","linux","git","devops","cyber security"
 ]
 
 def parse_resume(file):
     reader = PyPDF2.PdfReader(file)
     text = " ".join([p.extract_text() or "" for p in reader.pages]).lower()
     return sorted(set([s for s in SKILL_BANK if s in text]))
-
-# ================= RESUME–INTERNSHIP SIMILARITY (NEW) =================
-def similarity_score(resume_skills, description):
-    if not resume_skills:
-        return 0
-    text = description.lower()
-    matches = sum(1 for s in resume_skills if s in text)
-    return round((matches / len(resume_skills)) * 100, 2)
 
 # ================= ML MODEL =================
 def build_features(df):
@@ -193,14 +205,15 @@ if not st.session_state.user:
         u = st.text_input("Username", key="ru")
         e = st.text_input("Email", key="re")
         p = st.text_input("Password", type="password", key="rp")
+        role = st.selectbox("Role", ["Student","Admin"])
         if st.button("Register"):
-            ok, msg = register_user(u, e, p, "Student")
+            ok, msg = register_user(u, e, p, role)
             st.success(msg) if ok else st.error(msg)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= STUDENT =================
-elif st.session_state.page in ["search", "applied"]:
+elif st.session_state.role == "Student":
     df = pd.read_csv("adzuna_internships_raw.csv")
     df.columns = df.columns.str.lower()
     df["description"] = df["description"].fillna("")
@@ -211,7 +224,7 @@ elif st.session_state.page in ["search", "applied"]:
 
     if st.session_state.page == "search":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        pdf = st.file_uploader("📄 Upload Resume (Optional)", type=["pdf"])
+        pdf = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
         if pdf:
             st.session_state.resume_skills = parse_resume(pdf)
             st.success(f"Skills detected: {', '.join(st.session_state.resume_skills)}")
@@ -220,7 +233,13 @@ elif st.session_state.page in ["search", "applied"]:
         city = st.selectbox("Preferred City", ["All"] + sorted(df["location"].dropna().unique()))
 
         if st.button("Search Internships"):
-            results = df.copy()
+            keywords = [s.strip().lower() for s in skill.split(",") if s.strip()]
+            results = df[
+                df["description"].str.lower().apply(
+                    lambda x: any(k in x for k in keywords)
+                )
+            ] if keywords else df
+
             if city != "All":
                 results = results[results["location"].str.contains(city, case=False)]
 
@@ -229,15 +248,12 @@ elif st.session_state.page in ["search", "applied"]:
             )
 
             for i, j in results.sort_values("score", ascending=False).head(10).iterrows():
-                sim = similarity_score(st.session_state.resume_skills, j["description"])
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
                 st.markdown(f"""
                 <div class='title'>{j['title']}</div>
                 <div class='sub'>🏢 {j['company']} | 📍 {j['location']}</div>
                 💰 ₹{int(j['stipend'])}
-                <br>
                 <span class='badge'>Demand {int(j['score'])}</span>
-                <span class='badge'>Resume Match {sim}%</span>
                 """, unsafe_allow_html=True)
 
                 if st.button("Apply", key=f"a{i}"):
@@ -263,23 +279,25 @@ elif st.session_state.page in ["search", "applied"]:
         st.dataframe(apps)
         st.markdown("</div>", unsafe_allow_html=True)
 
-# ================= ADMIN ANALYTICS (NEW) =================
-elif st.session_state.page == "admin":
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
+# ================= ADMIN =================
+elif st.session_state.role == "Admin":
     st.title("📊 Admin Analytics Dashboard")
 
-    conn = db()
-    users = pd.read_sql("SELECT COUNT(*) FROM users", conn).iloc[0,0]
-    apps = pd.read_sql("SELECT COUNT(*) FROM applications", conn).iloc[0,0]
-    by_city = pd.read_sql("SELECT location, COUNT(*) cnt FROM applications GROUP BY location", conn)
-    by_company = pd.read_sql("SELECT company, COUNT(*) cnt FROM applications GROUP BY company", conn)
-    conn.close()
+    df = pd.read_csv("adzuna_internships_raw.csv")
+    df["description"] = df["description"].fillna("")
+    df = build_features(df)
 
-    st.metric("Total Users", users)
-    st.metric("Total Applications", apps)
-    st.subheader("📍 Applications by City")
-    st.bar_chart(by_city.set_index("location"))
-    st.subheader("🏢 Company-wise Applications")
-    st.bar_chart(by_company.set_index("company"))
+    # Skill trend forecasting (proxy)
+    skill_counts = {}
+    for desc in df["description"]:
+        for s in SKILL_BANK:
+            if s in desc.lower():
+                skill_counts[s] = skill_counts.get(s, 0) + 1
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    trend_df = pd.DataFrame(
+        sorted(skill_counts.items(), key=lambda x: x[1], reverse=True),
+        columns=["Skill","Demand"]
+    ).head(15)
+
+    st.subheader("🔥 Skill Demand Forecast")
+    st.bar_chart(trend_df.set_index("Skill"))
