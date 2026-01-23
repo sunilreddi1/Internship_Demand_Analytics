@@ -1,9 +1,58 @@
+# Virtual environments
 venv/
+.venv/
+env/
+ENV/
+
+# Python cache
 __pycache__/
+*.py[cod]
+
+# Streamlit secrets
 .streamlit/secrets.toml
+
+# Bytecode
 *.pyc
+
+# Environment files
 .env
+.env.*
+
+# Databases
 *.db
 users.db
 *.sqlite
 *.sqlite3
+
+# IDEs / Editors
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test & coverage
+.pytest_cache/
+coverage.xml
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Packaging
+dist/
+build/
+*.egg-info/
+
+# Secrets
+secrets.toml
+*.pem
+*.key
+
+# Optional: raw data (uncomment if you don't want to track large CSVs)
+# adzuna_internships_raw.csv
