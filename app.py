@@ -275,17 +275,15 @@ else:
     elif st.session_state.page == "applied":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-        conn = db()
-query = """
-    SELECT job_title, company, location, applied_at
-    FROM applications
-    WHERE username = %s
-    ORDER BY applied_at DESC
-"""
-apps = pd.read_sql(query, conn, params=(current_user(),))
-conn.close()
+        query = """
+        SELECT job_title, company, location, applied_at
+        FROM applications
+        WHERE LOWER(username) = %s
+        ORDER BY applied_at DESC
+        """
+        apps = pd.read_sql(query, st.secrets["db"]["url"], params=(current_user(),))
 
-if apps.empty:
+        if apps.empty:
     st.info("You have not applied to any internships yet.")
 else:
     st.dataframe(apps, use_container_width=True)
