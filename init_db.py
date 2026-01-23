@@ -1,39 +1,38 @@
 import psycopg2
 import sqlite3
 import os
+from sqlalchemy import create_engine, text
 
 def init_db():
     db_url = os.getenv("DATABASE_URL")
     if db_url:
         try:
-            conn = psycopg2.connect(db_url, sslmode="require")
-            cur = conn.cursor()
+            engine = create_engine(db_url)
+            with engine.connect() as conn:
+                # USERS TABLE
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE,
+                    email TEXT UNIQUE,
+                    password BYTEA,
+                    role TEXT
+                );
+                """))
 
-            # USERS TABLE
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username TEXT UNIQUE,
-                email TEXT UNIQUE,
-                password BYTEA,
-                role TEXT
-            );
-            """)
+                # APPLICATIONS TABLE
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS applications (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT,
+                    job_title TEXT,
+                    company TEXT,
+                    location TEXT,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """))
 
-            # APPLICATIONS TABLE
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS applications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT,
-                job_title TEXT,
-                company TEXT,
-                location TEXT,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """)
-
-            conn.commit()
-            conn.close()
+                conn.commit()
             print("✅ PostgreSQL database initialized successfully")
             return
         except Exception as e:
@@ -41,34 +40,32 @@ def init_db():
             print("🔄 Falling back to SQLite...")
 
     # SQLite fallback
-    conn = sqlite3.connect("users.db")
-    cur = conn.cursor()
+    engine = create_engine("sqlite:///users.db")
+    with engine.connect() as conn:
+        # USERS TABLE
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            email TEXT UNIQUE,
+            password BLOB,
+            role TEXT
+        );
+        """))
 
-    # USERS TABLE
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        email TEXT UNIQUE,
-        password BLOB,
-        role TEXT
-    );
-    """)
+        # APPLICATIONS TABLE
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            job_title TEXT,
+            company TEXT,
+            location TEXT,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """))
 
-    # APPLICATIONS TABLE
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS applications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
-        job_title TEXT,
-        company TEXT,
-        location TEXT,
-        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-
-    conn.commit()
-    conn.close()
+        conn.commit()
     print("✅ SQLite database initialized successfully")
 
 if __name__ == "__main__":

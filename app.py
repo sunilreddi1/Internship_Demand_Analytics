@@ -5,6 +5,7 @@ import bcrypt
 import numpy as np
 import re
 import PyPDF2
+from sqlalchemy import create_engine
 from src.demand_model import build_features, train_model
 from src.preprocess import preprocess_data
 
@@ -131,52 +132,55 @@ def db():
         st.session_state.db_fallback_shown = False
 
     try:
-        return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
+        # Return SQLAlchemy engine for PostgreSQL
+        return create_engine(st.secrets["db"]["url"])
     except Exception as e:
         if not st.session_state.db_fallback_shown:
             st.info("🔄 Using local database for testing. Your data will be stored locally.")
             st.session_state.db_fallback_shown = True
         # Fallback to local SQLite for development
-        import sqlite3
-        return sqlite3.connect("users.db")
+        return create_engine("sqlite:///users.db")
 
 def init_db():
     try:
-        conn = db()
-        cur = conn.cursor()
+        engine = db()
+        with engine.connect() as conn:
+            # Get raw connection for cursor operations
+            raw_conn = conn.connection if hasattr(conn, 'connection') else conn
+            cur = raw_conn.cursor()
 
-        # Check if it's PostgreSQL (has autocommit) or SQLite
-        if hasattr(conn, 'autocommit'):  # PostgreSQL
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username TEXT UNIQUE,
-                email TEXT UNIQUE,
-                password BYTEA,
-                role TEXT
-            );
-            """)
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS applications (
-                id SERIAL PRIMARY KEY,
-                username TEXT,
-                job_title TEXT,
-                company TEXT,
-                location TEXT,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """)
-        else:  # SQLite
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                password TEXT,
-                role TEXT
-            );
-            """)
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS applications (
+            # Check if it's PostgreSQL or SQLite based on engine URL
+            if 'postgresql' in str(engine.url):
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE,
+                    email TEXT UNIQUE,
+                    password BYTEA,
+                    role TEXT
+                );
+                """)
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS applications (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT,
+                    job_title TEXT,
+                    company TEXT,
+                    location TEXT,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """)
+            else:  # SQLite
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE,
+                    password TEXT,
+                    role TEXT
+                );
+                """)
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS applications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT,
                 job_title TEXT,
@@ -245,35 +249,35 @@ def register_user(username, email, password, role):
     email = email.lower().strip()
 
     try:
-        conn = db()
-        cur = conn.cursor()
+        engine = db()
+        with engine.connect() as conn:
+            # Get raw connection for cursor operations
+            raw_conn = conn.connection if hasattr(conn, 'connection') else conn
+            cur = raw_conn.cursor()
 
-        # Check if PostgreSQL (has autocommit) or SQLite
-        if hasattr(conn, 'autocommit'):  # PostgreSQL
-            cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
-            if cur.fetchone():
-                conn.close()
-                return False, "User already exists"
+            # Check if PostgreSQL or SQLite based on engine URL
+            if 'postgresql' in str(engine.url):
+                cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
+                if cur.fetchone():
+                    return False, "User already exists"
 
-            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-            cur.execute(
-                "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
-                (username, email, psycopg2.Binary(hashed), role)
-            )
-        else:  # SQLite
-            cur.execute("SELECT 1 FROM users WHERE username=?", (username,))
-            if cur.fetchone():
-                conn.close()
-                return False, "User already exists"
+                hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+                cur.execute(
+                    "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
+                    (username, email, psycopg2.Binary(hashed), role)
+                )
+            else:  # SQLite
+                cur.execute("SELECT 1 FROM users WHERE username=?", (username,))
+                if cur.fetchone():
+                    return False, "User already exists"
 
-            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-            cur.execute(
-                "INSERT INTO users (username,password,role) VALUES (?,?,?)",
-                (username, hashed.decode('utf-8'), role)
-            )
+                hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+                cur.execute(
+                    "INSERT INTO users (username,password,role) VALUES (?,?,?)",
+                    (username, hashed.decode('utf-8'), role)
+                )
 
-        conn.commit()
-        conn.close()
+            raw_conn.commit()
         return True, "Registered successfully"
     except Exception as e:
         return False, f"Registration failed: {e}"
@@ -281,21 +285,22 @@ def register_user(username, email, password, role):
 def validate_login(username, password):
     username = username.lower().strip()
     try:
-        conn = db()
-        cur = conn.cursor()
+        engine = db()
+        with engine.connect() as conn:
+            # Get raw connection for cursor operations
+            raw_conn = conn.connection if hasattr(conn, 'connection') else conn
+            cur = raw_conn.cursor()
 
-        if hasattr(conn, 'autocommit'):  # PostgreSQL
-            cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
-            row = cur.fetchone()
-            conn.close()
-            if row and bcrypt.checkpw(password.encode(), bytes(row[0])):
-                return row[1]
-        else:  # SQLite
-            cur.execute("SELECT password, role FROM users WHERE username=?", (username,))
-            row = cur.fetchone()
-            conn.close()
-            if row and bcrypt.checkpw(password.encode(), row[0].encode('utf-8')):
-                return row[1]
+            if 'postgresql' in str(engine.url):
+                cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
+                row = cur.fetchone()
+                if row and bcrypt.checkpw(password.encode(), bytes(row[0])):
+                    return row[1]
+            else:  # SQLite
+                cur.execute("SELECT password, role FROM users WHERE username=?", (username,))
+                row = cur.fetchone()
+                if row and bcrypt.checkpw(password.encode(), row[0].encode('utf-8')):
+                    return row[1]
         return None
     except Exception as e:
         st.error(f"Login failed: {e}")
@@ -362,20 +367,48 @@ else:
             skill = st.text_input("Skills", value=", ".join(st.session_state.resume_skills))
             city = st.selectbox("Preferred City", ["All"] + sorted(df["location"].dropna().unique()))
 
+            # Show internships by default, filtered by search criteria
+            keywords = [k.strip().lower() for k in skill.split(",") if k.strip()]
+            results = df if not keywords else df[
+                df["description"].str.lower().apply(lambda x: any(k in x for k in keywords))
+            ]
+            if city != "All":
+                results = results[results["location"].str.contains(city, case=False)]
+
+            # Get list of already applied job titles for this user
+            try:
+                engine = db()
+                if 'postgresql' in str(engine.url):
+                    applied_jobs = pd.read_sql("""
+                        SELECT DISTINCT job_title
+                        FROM applications
+                        WHERE LOWER(username)=%(username)s
+                    """, engine, params={'username': current_user()})
+                else:  # SQLite
+                    applied_jobs = pd.read_sql_query("""
+                        SELECT DISTINCT job_title
+                        FROM applications
+                        WHERE LOWER(username)=LOWER(?)
+                    """, engine, params=(current_user(),))
+                
+                applied_titles = applied_jobs['job_title'].str.lower().tolist() if not applied_jobs.empty else []
+            except:
+                applied_titles = []
+
+            results = results.copy()
+            results["score"] = model.predict(
+                results[["stipend","skill_count","company_score","is_remote"]]
+            )
+
+            # Filter out already applied internships
+            results = results[~results["title"].str.lower().isin(applied_titles)]
+
             if st.button("🔎 Find Internships"):
-                keywords = [k.strip().lower() for k in skill.split(",") if k.strip()]
-                results = df if not keywords else df[
-                    df["description"].str.lower().apply(lambda x: any(k in x for k in keywords))
-                ]
-                if city != "All":
-                    results = results[results["location"].str.contains(city, case=False)]
-
-                results = results.copy()
-                results["score"] = model.predict(
-                    results[["stipend","skill_count","company_score","is_remote"]]
-                )
-
-                for i, j in results.sort_values("score", ascending=False).head(10).iterrows():
+                st.markdown(f"<h3>🎯 Found {len(results)} internships matching your criteria</h3>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<h3>🎯 Top {min(10, len(results))} recommended internships</h3>", unsafe_allow_html=True)
+            
+            for i, j in results.sort_values("score", ascending=False).head(10).iterrows():
                     st.markdown("<div class='card'>", unsafe_allow_html=True)
 
                     st.markdown(f"""
@@ -387,30 +420,33 @@ else:
 
                     if st.button("Apply 🚀", key=f"apply_{i}"):
                         try:
-                            conn = db()
-                            cur = conn.cursor()
-                            if hasattr(conn, 'autocommit'):  # PostgreSQL
-                                cur.execute(
-                                    "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
-                                    (current_user(), j["title"], j["company"], j["location"])
-                                )
-                            else:  # SQLite - check schema and adapt
-                                # Check if table has correct columns
-                                cur.execute("PRAGMA table_info(applications)")
-                                columns = [col[1] for col in cur.fetchall()]
-                                if 'job_title' in columns:
+                            engine = db()
+                            with engine.connect() as conn:
+                                # Get raw connection for cursor operations
+                                raw_conn = conn.connection if hasattr(conn, 'connection') else conn
+                                cur = raw_conn.cursor()
+                                
+                                if 'postgresql' in str(engine.url):
                                     cur.execute(
-                                        "INSERT INTO applications (username,job_title,company,location) VALUES (?,?,?,?)",
+                                        "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
                                         (current_user(), j["title"], j["company"], j["location"])
                                     )
-                                else:
-                                    # Use existing schema
-                                    cur.execute(
-                                        "INSERT INTO applications (username,job_id,status) VALUES (?,?,?)",
-                                        (current_user(), j["title"], "Applied")
-                                    )
-                            conn.commit()
-                            conn.close()
+                                else:  # SQLite - check schema and adapt
+                                    # Check if table has correct columns
+                                    cur.execute("PRAGMA table_info(applications)")
+                                    columns = [col[1] for col in cur.fetchall()]
+                                    if 'job_title' in columns:
+                                        cur.execute(
+                                            "INSERT INTO applications (username,job_title,company,location) VALUES (?,?,?,?)",
+                                            (current_user(), j["title"], j["company"], j["location"])
+                                        )
+                                    else:
+                                        # Use existing schema
+                                        cur.execute(
+                                            "INSERT INTO applications (username,job_id,status) VALUES (?,?,?)",
+                                            (current_user(), j["title"], "Applied")
+                                        )
+                                raw_conn.commit()
                             st.success("🎉 Applied successfully!")
                             st.rerun()
                         except Exception as e:
@@ -423,35 +459,36 @@ else:
         with tab2:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             try:
-                conn = db()
-                if hasattr(conn, 'autocommit'):  # PostgreSQL
+                engine = db()
+                # Check if it's PostgreSQL or SQLite based on engine URL
+                if 'postgresql' in str(engine.url):
                     apps = pd.read_sql("""
                         SELECT job_title, company, location, applied_at
                         FROM applications
-                        WHERE LOWER(username)=%s
+                        WHERE LOWER(username)=%(username)s
                         ORDER BY applied_at DESC
-                    """, conn, params=(current_user(),))
-                else:  # SQLite - check schema and adapt
-                    cur = conn.cursor()
-                    cur.execute("PRAGMA table_info(applications)")
-                    columns = [col[1] for col in cur.fetchall()]
-                    
-                    if 'job_title' in columns:
-                        apps = pd.read_sql_query("""
-                            SELECT job_title, company, location, applied_at
+                    """, engine, params={'username': current_user()})
+                else:  # SQLite
+                    with engine.connect() as conn:
+                        cur = conn.connection.cursor()
+                        cur.execute("PRAGMA table_info(applications)")
+                        columns = [col[1] for col in cur.fetchall()]
+                        
+                        if 'job_title' in columns:
+                            apps = pd.read_sql_query("""
+                                SELECT job_title, company, location, applied_at
                             FROM applications
                             WHERE LOWER(username)=LOWER(?)
                             ORDER BY applied_at DESC
-                        """, conn, params=(current_user(),))
-                    else:
-                        # Use existing schema
-                        apps = pd.read_sql_query("""
-                            SELECT job_id as job_title, 'Applied' as company, '' as location, id as applied_at
+                        """, engine, params=(current_user(),))
+                        else:
+                            # Use existing schema
+                            apps = pd.read_sql_query("""
+                                SELECT job_id as job_title, 'Applied' as company, '' as location, id as applied_at
                             FROM applications
                             WHERE LOWER(username)=LOWER(?)
                             ORDER BY id DESC
-                        """, conn, params=(current_user(),))
-                conn.close()
+                        """, engine, params=(current_user(),))
             except Exception as e:
                 st.error(f"Failed to load applications: {e}")
                 apps = pd.DataFrame()  # Empty dataframe as fallback

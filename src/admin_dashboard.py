@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import psycopg2
+from sqlalchemy import create_engine
 from .preprocess import preprocess_data
 
 def db():
@@ -9,14 +10,14 @@ def db():
         st.session_state.db_fallback_shown = False
 
     try:
-        return psycopg2.connect(st.secrets["db"]["url"], sslmode="require")
+        # Return SQLAlchemy engine for PostgreSQL
+        return create_engine(st.secrets["db"]["url"])
     except Exception as e:
         if not st.session_state.db_fallback_shown:
             st.info("🔄 Using local database for testing. Your data will be stored locally.")
             st.session_state.db_fallback_shown = True
         # Fallback to local SQLite for development
-        import sqlite3
-        return sqlite3.connect("users.db")
+        return create_engine("sqlite:///users.db")
 
 def show_admin_dashboard():
     st.title("📊 Admin Dashboard – Internship Analytics")
@@ -26,32 +27,32 @@ def show_admin_dashboard():
 
     # Load applications data
     try:
-        conn = db()
-        if hasattr(conn, 'autocommit'):  # PostgreSQL
+        engine = db()
+        if 'postgresql' in str(engine.url):
             apps = pd.read_sql("""
                 SELECT job_title, company, location, applied_at, username
                 FROM applications
                 ORDER BY applied_at DESC
-            """, conn)
+            """, engine)
         else:  # SQLite - check schema and adapt
-            cur = conn.cursor()
-            cur.execute("PRAGMA table_info(applications)")
-            columns = [col[1] for col in cur.fetchall()]
-            
-            if 'job_title' in columns:
-                apps = pd.read_sql_query("""
-                    SELECT job_title, company, location, applied_at, username
-                    FROM applications
-                    ORDER BY applied_at DESC
-                """, conn)
-            else:
-                # Use existing schema
-                apps = pd.read_sql_query("""
-                    SELECT job_id as job_title, status as company, '' as location, id as applied_at, username
-                    FROM applications
-                    ORDER BY id DESC
-                """, conn)
-        conn.close()
+            with engine.connect() as conn:
+                cur = conn.connection.cursor()
+                cur.execute("PRAGMA table_info(applications)")
+                columns = [col[1] for col in cur.fetchall()]
+                
+                if 'job_title' in columns:
+                    apps = pd.read_sql_query("""
+                        SELECT job_title, company, location, applied_at, username
+                        FROM applications
+                        ORDER BY applied_at DESC
+                    """, engine)
+                else:
+                    # Use existing schema
+                    apps = pd.read_sql_query("""
+                        SELECT job_id as job_title, status as company, '' as location, id as applied_at, username
+                        FROM applications
+                        ORDER BY id DESC
+                    """, engine)
     except Exception as e:
         st.error(f"Failed to load applications data: {e}")
         apps = pd.DataFrame()  # Empty dataframe as fallback

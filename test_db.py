@@ -1,5 +1,6 @@
 import psycopg2
 import sqlite3
+from sqlalchemy import create_engine
 
 def db():
     try:
@@ -8,16 +9,19 @@ def db():
             "@ep-orange-band-ah7k9fu3-pooler.c-3.us-east-1.aws.neon.tech:5432"
             "/neondb?sslmode=require"
         )
-        conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        engine = create_engine(DATABASE_URL)
         print("✅ CONNECTED TO NEON SUCCESSFULLY")
-        return conn
+        return engine
     except Exception as e:
         print(f"❌ PostgreSQL connection failed: {e}")
         print("🔄 Falling back to SQLite...")
-        conn = sqlite3.connect("users.db")
+        engine = create_engine("sqlite:///users.db")
         print("✅ CONNECTED TO SQLITE SUCCESSFULLY")
-        return conn
+        return engine
 
 # Test the connection
-conn = db()
-conn.close()
+engine = db()
+# Test a simple query
+with engine.connect() as conn:
+    result = conn.execute("SELECT 1")
+    print("✅ Query executed successfully")
