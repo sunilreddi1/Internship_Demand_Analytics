@@ -749,6 +749,3 @@ def main():
 # ================= MAIN GUARD =================
 if __name__ == "__main__":
     main()
-else:
-    # For Streamlit Cloud - run main when imported
-    main()
