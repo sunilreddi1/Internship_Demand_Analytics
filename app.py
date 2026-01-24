@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import psycopg2
 import bcrypt
 import numpy as np
 import re
@@ -8,6 +7,13 @@ import PyPDF2
 from sqlalchemy import create_engine, text
 from src.demand_model import build_features, train_model
 from src.preprocess import preprocess_data
+
+# Optional imports for database
+try:
+    import psycopg2
+    HAS_PSYCOPG2 = True
+except ImportError:
+    HAS_PSYCOPG2 = False
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -129,14 +135,18 @@ body {{
 def db():
     try:
         # Try to create and test PostgreSQL connection
-        engine = create_engine(st.secrets["db"]["url"])
-        # Test the connection
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return engine
+        # Only try if secrets are available
+        if hasattr(st, 'secrets') and 'db' in st.secrets and 'url' in st.secrets['db']:
+            engine = create_engine(st.secrets["db"]["url"])
+            # Test the connection
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return engine
     except Exception as e:
-        # Fallback to local SQLite for development (silent fallback)
-        return create_engine("sqlite:///users.db")
+        pass  # Fall through to SQLite
+
+    # Fallback to local SQLite for development (silent fallback)
+    return create_engine("sqlite:///users.db")
 
 def init_db():
     try:
@@ -256,10 +266,17 @@ def register_user(username, email, password, role):
                     return False, "User already exists"
 
                 hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-                cur.execute(
-                    "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
-                    (username, email, psycopg2.Binary(hashed), role)
-                )
+                if HAS_PSYCOPG2:
+                    cur.execute(
+                        "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
+                        (username, email, psycopg2.Binary(hashed), role)
+                    )
+                else:
+                    # Fallback if psycopg2 not available
+                    cur.execute(
+                        "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
+                        (username, email, hashed, role)
+                    )
             else:  # SQLite
                 cur.execute("SELECT 1 FROM users WHERE username=?", (username,))
                 if cur.fetchone():
