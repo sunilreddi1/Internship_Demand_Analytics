@@ -1,6 +1,9 @@
 [server]
 headless = false
 port = 8505
+address = "0.0.0.0"
+enableCORS = false
+enableXsrfProtection = true
 
 [theme]
 primaryColor = "#2563eb"

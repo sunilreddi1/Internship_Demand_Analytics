@@ -78,6 +78,31 @@ Output:
    ```
 4. Run: `streamlit run app.py`
 
+### Troubleshooting Port Issues:
+
+If you get "Port 8505 is not available" error:
+
+**Option 1: Use the provided scripts**
+- **Windows**: Double-click `run_app.bat`
+- **PowerShell**: Run `.\run_app.ps1`
+
+**Option 2: Manual cleanup**
+```bash
+# Kill existing processes
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq streamlit*"
+taskkill /F /IM streamlit.exe
+
+# Wait a few seconds, then run
+streamlit run app.py
+```
+
+**Option 3: Use a different port**
+```bash
+streamlit run app.py --server.port 8506
+```
+
+The app is configured to always use port 8505. If you need to change this permanently, edit `.streamlit/config.toml`.
+
 ### Streamlit Cloud Deployment:
 1. Connect your GitHub repository to Streamlit Cloud
 2. Set secrets in Streamlit Cloud dashboard:
