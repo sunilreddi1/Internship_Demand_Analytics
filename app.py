@@ -646,6 +646,7 @@ def apply_for_job(job_data):
     except Exception as e:
         st.error(f"Application failed: {e}")
 
-    elif st.session_state.role == "Admin":
-        from src.admin_dashboard import show_admin_dashboard
-        show_admin_dashboard()
+# ================= ADMIN =================
+if st.session_state.role == "Admin":
+    from src.admin_dashboard import show_admin_dashboard
+    show_admin_dashboard()
