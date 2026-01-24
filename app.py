@@ -216,9 +216,6 @@ with st.sidebar:
         st.button("🔍  Search Internships",
                   on_click=lambda: st.session_state.update(page="search"))
 
-        st.button("📌  Applied Internships",
-                  on_click=lambda: st.session_state.update(page="applied"))
-
         if st.session_state.role == "Admin":
             st.button("📊  Admin Dashboard",
                       on_click=lambda: st.session_state.update(page="admin"))
@@ -507,10 +504,45 @@ else:
             if st.button("🔎 Find Internships"):
                 st.markdown(f"<h3>🎯 Found {len(results)} internships matching your criteria</h3>", unsafe_allow_html=True)
             else:
-                st.markdown(f"<h3>🎯 Top {min(10, len(results))} internships</h3>", unsafe_allow_html=True)
+                st.markdown(f"<h3>🎯 Showing internships ({len(results)} total)</h3>", unsafe_allow_html=True)
 
-            for i, j in results.sort_values("score", ascending=False).head(10).iterrows():
-                display_internship_card(j, i, applied_titles)
+            # Pagination
+            items_per_page = 10
+            total_pages = (len(results) + items_per_page - 1) // items_per_page  # Ceiling division
+
+            if 'current_page' not in st.session_state:
+                st.session_state.current_page = 0
+
+            if total_pages > 1:
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col1:
+                    if st.button("⬅️ Previous", disabled=st.session_state.current_page == 0):
+                        st.session_state.current_page -= 1
+                        st.rerun()
+                with col2:
+                    st.markdown(f"**Page {st.session_state.current_page + 1} of {total_pages}**")
+                with col3:
+                    if st.button("Next ➡️", disabled=st.session_state.current_page >= total_pages - 1):
+                        st.session_state.current_page += 1
+                        st.rerun()
+
+                # Page number buttons
+                cols = st.columns(min(10, total_pages))  # Max 10 buttons
+                for i in range(total_pages):
+                    if i < 10:  # Only show first 10 pages
+                        with cols[i % len(cols)]:
+                            if st.button(f"{i+1}", key=f"page_{i}", help=f"Go to page {i+1}"):
+                                st.session_state.current_page = i
+                                st.rerun()
+            else:
+                st.session_state.current_page = 0
+
+            start_idx = st.session_state.current_page * items_per_page
+            end_idx = start_idx + items_per_page
+            page_results = results.sort_values("score", ascending=False).iloc[start_idx:end_idx]
+
+            for i, j in page_results.iterrows():
+                display_internship_card(j, f"{st.session_state.current_page}_{i}", applied_titles)
 
             st.markdown("</div>", unsafe_allow_html=True)
 
