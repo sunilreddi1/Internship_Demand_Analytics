@@ -26,5 +26,5 @@ def db():
 engine = db()
 # Test a simple query
 with engine.connect() as conn:
-    result = conn.execute("SELECT 1")
+    result = conn.execute(text("SELECT 1"))
     print("✅ Query executed successfully")
