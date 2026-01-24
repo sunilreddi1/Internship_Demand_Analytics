@@ -18,20 +18,27 @@ except ImportError:
     HAS_PSYCOPG2 = False
 
 def current_user():
-    return st.session_state.user.strip().lower()
+    # Only access session state when running in Streamlit context
+    try:
+        return st.session_state.user.strip().lower()
+    except:
+        return None
 
 # ================= DATABASE =================
 # ================= DATABASE =================
 def db():
     try:
         # Try to create and test PostgreSQL connection
-        # Only try if secrets are available
-        if hasattr(st, 'secrets') and 'db' in st.secrets and 'url' in st.secrets['db']:
-            engine = create_engine(st.secrets["db"]["url"])
-            # Test the connection
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            return engine
+        # Only try if secrets are available and we're in Streamlit context
+        try:
+            if hasattr(st, 'secrets') and 'db' in st.secrets and 'url' in st.secrets['db']:
+                engine = create_engine(st.secrets["db"]["url"])
+                # Test the connection
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                return engine
+        except:
+            pass  # Not in Streamlit context or secrets not available
     except Exception as e:
         pass  # Fall through to SQLite
 

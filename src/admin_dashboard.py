@@ -1,23 +1,5 @@
 import streamlit as st
 import pandas as pd
-import psycopg2
-from sqlalchemy import create_engine, text
-from .preprocess import preprocess_data
-
-def db():
-    try:
-        # Try to create and test PostgreSQL connection
-        engine = create_engine(st.secrets["db"]["url"])
-        # Test the connection
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return engine
-    except Exception as e:
-        # Fallback to local SQLite for development (silent fallback)
-        return create_engine("sqlite:///users.db")
-
-import streamlit as st
-import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -30,14 +12,20 @@ import numpy as np
 def db():
     try:
         # Try to create and test PostgreSQL connection
-        engine = create_engine(st.secrets["db"]["url"])
-        # Test the connection
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return engine
+        # Only access secrets when in Streamlit context
+        try:
+            engine = create_engine(st.secrets["db"]["url"])
+            # Test the connection
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return engine
+        except:
+            pass  # Not in Streamlit context or secrets not available
     except Exception as e:
-        # Fallback to local SQLite for development (silent fallback)
-        return create_engine("sqlite:///users.db")
+        pass
+
+    # Fallback to local SQLite for development
+    return create_engine("sqlite:///users.db")
 
 def show_admin_dashboard():
     st.title("📊 Admin Dashboard – Internship Analytics")
