@@ -8,6 +8,8 @@ from sqlalchemy import create_engine, text
 from src.demand_model import build_features, train_model
 from src.preprocess import preprocess_data
 
+# Internship Demand Analytics App - Fixed for Streamlit Cloud deployment
+
 # Optional imports for database
 try:
     import psycopg2
