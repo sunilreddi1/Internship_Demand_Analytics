@@ -349,9 +349,9 @@ if not st.session_state.user:
 else:
     if st.session_state.role == "Student":
         df = preprocess_data()
-        model, _ = train_model(df)  # Removed accuracy display
+        from src.recommender import get_personalized_recommendations
 
-        tab1, tab2 = st.tabs(["🔎 Search Internships", "📋 My Applications"])
+        tab1, tab2, tab3 = st.tabs(["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications"])
 
         with tab1:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -386,15 +386,14 @@ else:
                         FROM applications
                         WHERE LOWER(username)=LOWER(?)
                     """, engine, params=(current_user(),))
-                
+
                 applied_titles = applied_jobs['job_title'].str.lower().tolist() if not applied_jobs.empty else []
             except:
                 applied_titles = []
 
             results = results.copy()
-            results["score"] = model.predict(
-                results[["stipend","skill_count","company_score","is_remote"]]
-            )
+            # Use basic scoring for search results
+            results["score"] = results["stipend"] * 0.01 + results["company_score"] * 10 + results["is_remote"] * 5
 
             # Filter out already applied internships
             results = results[~results["title"].str.lower().isin(applied_titles)]
@@ -402,57 +401,89 @@ else:
             if st.button("🔎 Find Internships"):
                 st.markdown(f"<h3>🎯 Found {len(results)} internships matching your criteria</h3>", unsafe_allow_html=True)
             else:
-                st.markdown(f"<h3>🎯 Top {min(10, len(results))} recommended internships</h3>", unsafe_allow_html=True)
-            
+                st.markdown(f"<h3>🎯 Top {min(10, len(results))} internships</h3>", unsafe_allow_html=True)
+
             for i, j in results.sort_values("score", ascending=False).head(10).iterrows():
-                    st.markdown("<div class='card'>", unsafe_allow_html=True)
-
-                    st.markdown(f"""
-                    <div class='title'>{j['title']}</div>
-                    <div class='sub'>🏢 {j['company']} | 📍 {j['location']}</div>
-                    💰 ₹{int(j['stipend'])}
-                    <span class='badge'>Score {int(j['score'])}</span>
-                    """, unsafe_allow_html=True)
-
-                    if st.button("Apply 🚀", key=f"apply_{i}"):
-                        try:
-                            engine = db()
-                            with engine.connect() as conn:
-                                # Get raw connection for cursor operations
-                                raw_conn = conn.connection if hasattr(conn, 'connection') else conn
-                                cur = raw_conn.cursor()
-                                
-                                if 'postgresql' in str(engine.url):
-                                    cur.execute(
-                                        "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
-                                        (current_user(), j["title"], j["company"], j["location"])
-                                    )
-                                else:  # SQLite - check schema and adapt
-                                    # Check if table has correct columns
-                                    cur.execute("PRAGMA table_info(applications)")
-                                    columns = [col[1] for col in cur.fetchall()]
-                                    if 'job_title' in columns:
-                                        cur.execute(
-                                            "INSERT INTO applications (username,job_title,company,location) VALUES (?,?,?,?)",
-                                            (current_user(), j["title"], j["company"], j["location"])
-                                        )
-                                    else:
-                                        # Use existing schema
-                                        cur.execute(
-                                            "INSERT INTO applications (username,job_id,status) VALUES (?,?,?)",
-                                            (current_user(), j["title"], "Applied")
-                                        )
-                                raw_conn.commit()
-                            st.success("🎉 Applied successfully!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Application failed: {e}")
-
-                    st.markdown("</div>", unsafe_allow_html=True)
+                display_internship_card(j, i, applied_titles)
 
             st.markdown("</div>", unsafe_allow_html=True)
 
         with tab2:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown("### 🤖 AI-Powered Recommendations")
+            st.markdown("Get personalized internship matches based on your skills, preferences, and application history.")
+
+            # User preferences form
+            col1, col2 = st.columns(2)
+
+            with col1:
+                pref_location = st.selectbox("Preferred Location",
+                                           ["Any"] + sorted(df["location"].dropna().unique()),
+                                           key="pref_location")
+                pref_domain = st.selectbox("Preferred Domain",
+                                         ["Any", "Technology", "Finance", "Marketing", "HR", "Operations"],
+                                         key="pref_domain")
+                min_stipend = st.slider("Minimum Stipend (₹)", 0, 50000, 5000, key="min_stipend")
+
+            with col2:
+                remote_pref = st.checkbox("Prefer Remote Work", key="remote_pref")
+                experience_level = st.selectbox("Experience Level",
+                                              ["Entry Level", "Intermediate", "Advanced"],
+                                              key="experience_level")
+
+            # Get user skills
+            user_skills = st.session_state.resume_skills
+            if not user_skills:
+                st.warning("⚠️ Please upload your resume in the Search tab to get better recommendations.")
+                user_skills = []
+
+            # Get applications history for collaborative filtering
+            try:
+                engine = db()
+                if 'postgresql' in str(engine.url):
+                    user_apps = pd.read_sql("""
+                        SELECT job_title, company, location
+                        FROM applications
+                        WHERE LOWER(username)=%(username)s
+                    """, engine, params={'username': current_user()})
+                else:
+                    user_apps = pd.read_sql_query("""
+                        SELECT job_title, company, location
+                        FROM applications
+                        WHERE LOWER(username)=LOWER(?)
+                    """, engine, params=(current_user(),))
+            except:
+                user_apps = pd.DataFrame()
+
+            if st.button("🎯 Get AI Recommendations", type="primary"):
+                with st.spinner("🤖 Analyzing your profile and finding best matches..."):
+                    # Create user profile
+                    user_preferences = {
+                        'location': pref_location if pref_location != "Any" else "",
+                        'domain': pref_domain if pref_domain != "Any" else "",
+                        'min_stipend': min_stipend,
+                        'max_stipend': 100000,  # High upper limit
+                        'remote': remote_pref,
+                        'experience': experience_level.lower().replace(" ", "_")
+                    }
+
+                    # Get personalized recommendations
+                    recommendations = get_personalized_recommendations(
+                        user_skills, user_preferences, df, user_apps
+                    )
+
+                    if not recommendations.empty:
+                        st.success(f"🎉 Found {len(recommendations)} personalized recommendations!")
+
+                        # Display recommendations
+                        for idx, rec in recommendations.iterrows():
+                            display_recommendation_card(rec, idx, applied_titles)
+                    else:
+                        st.info("🤔 No recommendations found. Try adjusting your preferences or upload a resume with more skills.")
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with tab3:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             try:
                 engine = db()
@@ -469,7 +500,7 @@ else:
                         cur = conn.connection.cursor()
                         cur.execute("PRAGMA table_info(applications)")
                         columns = [col[1] for col in cur.fetchall()]
-                        
+
                         if 'job_title' in columns:
                             apps = pd.read_sql_query("""
                                 SELECT job_title, company, location, applied_at
@@ -488,9 +519,132 @@ else:
             except Exception as e:
                 st.error(f"Failed to load applications: {e}")
                 apps = pd.DataFrame()  # Empty dataframe as fallback
-            st.dataframe(apps, width='stretch')
+
+            if not apps.empty:
+                st.markdown(f"<h3>📋 Your Applications ({len(apps)} total)</h3>", unsafe_allow_html=True)
+                st.dataframe(apps, width='stretch')
+
+                # Application statistics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Applied", len(apps))
+                with col2:
+                    unique_companies = apps['company'].nunique()
+                    st.metric("Companies Applied To", unique_companies)
+                with col3:
+                    if 'applied_at' in apps.columns:
+                        latest_app = pd.to_datetime(apps['applied_at']).max()
+                        st.metric("Last Application", latest_app.strftime('%Y-%m-%d'))
+            else:
+                st.info("📝 You haven't applied to any internships yet. Start exploring opportunities!")
 
             st.markdown("</div>", unsafe_allow_html=True)
+
+def display_internship_card(job_data, index, applied_titles):
+    """Display a single internship card with apply functionality"""
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class='title'>{job_data['title']}</div>
+    <div class='sub'>🏢 {job_data['company']} | 📍 {job_data['location']}</div>
+    💰 ₹{int(job_data['stipend'])}
+    <span class='badge'>Match Score {int(job_data['score'])}</span>
+    """, unsafe_allow_html=True)
+
+    # Show skills if available
+    if 'skills_required' in job_data and job_data['skills_required']:
+        skills = job_data['skills_required'][:100] + "..." if len(job_data['skills_required']) > 100 else job_data['skills_required']
+        st.caption(f"🎯 Skills: {skills}")
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if st.button("📖 View Details", key=f"details_{index}"):
+            with st.expander("Job Details", expanded=True):
+                st.write("**Description:**")
+                st.write(job_data.get('description', 'No description available')[:500] + "...")
+                if 'category' in job_data:
+                    st.write(f"**Category:** {job_data['category']}")
+                if 'is_remote' in job_data:
+                    st.write(f"**Remote Work:** {'Yes' if job_data['is_remote'] else 'No'}")
+
+    with col2:
+        if st.button("Apply 🚀", key=f"apply_{index}"):
+            apply_for_job(job_data)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def display_recommendation_card(job_data, index, applied_titles):
+    """Display a recommendation card with enhanced information"""
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+    # Recommendation score indicator
+    score = job_data.get('recommendation_score', 0)
+    if score >= 80:
+        score_color = "🟢"
+        score_text = "Excellent Match"
+    elif score >= 60:
+        score_color = "🟡"
+        score_text = "Good Match"
+    else:
+        score_color = "🟠"
+        score_text = "Fair Match"
+
+    st.markdown(f"""
+    <div class='title'>{job_data['title']}</div>
+    <div class='sub'>🏢 {job_data['company']} | 📍 {job_data['location']}</div>
+    💰 ₹{int(job_data.get('stipend', 0))} | {score_color} {score_text}
+    <span class='badge'>AI Score: {score:.1f}/100</span>
+    """, unsafe_allow_html=True)
+
+    # Show why this recommendation
+    content_score = job_data.get('content_score', 0)
+    collab_score = job_data.get('collaborative_score', 0)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.caption(f"🎯 Skills Match: {content_score:.1f}")
+    with col2:
+        st.caption(f"👥 Popularity: {collab_score:.1f}")
+    with col3:
+        if st.button("Apply 🚀", key=f"rec_apply_{index}"):
+            apply_for_job(job_data)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def apply_for_job(job_data):
+    """Handle job application"""
+    try:
+        engine = db()
+        with engine.connect() as conn:
+            # Get raw connection for cursor operations
+            raw_conn = conn.connection if hasattr(conn, 'connection') else conn
+            cur = raw_conn.cursor()
+
+            if 'postgresql' in str(engine.url):
+                cur.execute(
+                    "INSERT INTO applications (username,job_title,company,location) VALUES (%s,%s,%s,%s)",
+                    (current_user(), job_data["title"], job_data["company"], job_data["location"])
+                )
+            else:  # SQLite - check schema and adapt
+                # Check if table has correct columns
+                cur.execute("PRAGMA table_info(applications)")
+                columns = [col[1] for col in cur.fetchall()]
+                if 'job_title' in columns:
+                    cur.execute(
+                        "INSERT INTO applications (username,job_title,company,location) VALUES (?,?,?,?)",
+                        (current_user(), job_data["title"], job_data["company"], job_data["location"])
+                    )
+                else:
+                    # Use existing schema
+                    cur.execute(
+                        "INSERT INTO applications (username,job_id,status) VALUES (?,?,?)",
+                        (current_user(), job_data["title"], "Applied")
+                    )
+            raw_conn.commit()
+        st.success("🎉 Applied successfully!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Application failed: {e}")
 
     elif st.session_state.role == "Admin":
         from src.admin_dashboard import show_admin_dashboard
