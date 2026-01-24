@@ -110,7 +110,7 @@ def calculate_collaborative_score(user_id, job_id, applications_df):
     Returns:
         score: Collaborative filtering score
     """
-    if applications_df.empty:
+    if applications_df is None or applications_df.empty:
         return 50  # Neutral score if no data
 
     # Find users who applied to similar jobs
