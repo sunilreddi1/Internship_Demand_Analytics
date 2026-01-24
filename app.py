@@ -15,122 +15,10 @@ try:
 except ImportError:
     HAS_PSYCOPG2 = False
 
-# ================= PAGE CONFIG =================
-st.set_page_config(
-    page_title="Internship Demand & Recommendation Portal",
-    page_icon="🎓",
-    layout="wide"
-)
-
-# ================= SESSION =================
-for k, v in {
-    "user": None,
-    "role": None,
-    "page": "search",
-    "resume_skills": [],
-    "dark": False
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
 def current_user():
     return st.session_state.user.strip().lower()
 
-# ================= THEME =================
-bg = "#020617" if st.session_state.dark else "#f1f5f9"
-card = "rgba(15,23,42,0.75)" if st.session_state.dark else "rgba(255,255,255,0.95)"
-text = "#e5e7eb" if st.session_state.dark else "#0f172a"
-sub = "#94a3b8" if st.session_state.dark else "#475569"
-
-# ================= GLOBAL STYLE =================
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-
-/* Base font for app */
-html, body, [class*="css"], [data-testid="stAppViewContainer"] {{
-    font-family: 'Inter', sans-serif !important;
-}}
-
-/* Target Streamlit app container explicitly to override theme on deploy */
-[data-testid="stAppViewContainer"] {{
-    background: {bg} !important;
-    color: {text} !important;
-}}
-
-/* Fallback generic body rule (kept for environments without data-testid) */
-body {{
-    background: {bg} !important;
-    color: {text} !important;
-}}
-
-.card {{
-    background: {card} !important;
-    padding: 28px;
-    border-radius: 20px;
-    margin-bottom: 24px;
-    box-shadow: 0 18px 36px rgba(0,0,0,0.25);
-    animation: fadeInUp 0.6s ease both;
-    transition: transform .25s ease, box-shadow .25s ease;
-}}
-
-.card:hover {{
-    transform: translateY(-6px);
-    box-shadow: 0 26px 55px rgba(0,0,0,0.35);
-}}
-
-@keyframes fadeInUp {{
-    from {{
-        opacity: 0;
-        transform: translateY(18px);
-    }}
-    to {{
-        opacity: 1;
-        transform: translateY(0);
-    }}
-}}
-
-.title {{
-    font-size: 22px;
-    font-weight: 700;
-}}
-
-.sub {{
-    color: {sub} !important;
-}}
-
-.badge {{
-    background: linear-gradient(135deg, #0ea5e9, #38bdf8);
-    color: white;
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-size: 12px;
-    margin-left: 6px;
-}}
-
-/* Streamlit button targeting */
-.stButton>button, button {{
-    background: linear-gradient(135deg,#2563eb,#38bdf8) !important;
-    color: white !important;
-    border-radius: 14px !important;
-    font-weight: 600 !important;
-    border: none !important;
-}}
-
-.stButton>button:hover, button:hover {{
-    transform: translateY(-1px);
-    box-shadow: 0 8px 18px rgba(37,99,235,0.45) !important;
-}}
-
-/* Ensure main container backgrounds are transparent so .card shows through */
-[data-testid="stAppViewContainer"] .css-1d391kg, /* class may vary */
-[data-testid="stAppViewContainer"] .main {{
-    background: transparent !important;
-}}
-
-</style>
-""", unsafe_allow_html=True)
-
+# ================= DATABASE =================
 # ================= DATABASE =================
 def db():
     try:
@@ -441,7 +329,121 @@ def display_recommendation_card(rec, idx, applied_titles):
 
 # ================= MAIN APP =================
 def main():
-    # ================= SIDEBAR =================
+    # ================= PAGE CONFIG =================
+    st.set_page_config(
+        page_title="Internship Demand & Recommendation Portal",
+        page_icon="🎓",
+        layout="wide"
+    )
+
+    # ================= SESSION =================
+    for k, v in {
+        "user": None,
+        "role": None,
+        "page": "search",
+        "resume_skills": [],
+        "dark": False
+    }.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    def current_user():
+        return st.session_state.user.strip().lower()
+
+    # ================= THEME =================
+    bg = "#020617" if st.session_state.dark else "#f1f5f9"
+    card = "rgba(15,23,42,0.75)" if st.session_state.dark else "rgba(255,255,255,0.95)"
+    text = "#e5e7eb" if st.session_state.dark else "#0f172a"
+    sub = "#94a3b8" if st.session_state.dark else "#475569"
+
+    # ================= GLOBAL STYLE =================
+    st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+    /* Base font for app */
+    html, body, [class*="css"], [data-testid="stAppViewContainer"] {{
+        font-family: 'Inter', sans-serif !important;
+    }}
+
+    /* Target Streamlit app container explicitly to override theme on deploy */
+    [data-testid="stAppViewContainer"] {{
+        background: {bg} !important;
+        color: {text} !important;
+    }}
+
+    /* Fallback generic body rule (kept for environments without data-testid) */
+    body {{
+        background: {bg} !important;
+        color: {text} !important;
+    }}
+
+    .card {{
+        background: {card} !important;
+        padding: 28px;
+        border-radius: 20px;
+        margin-bottom: 24px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.25);
+        animation: fadeInUp 0.6s ease both;
+        transition: transform .25s ease, box-shadow .25s ease;
+    }}
+
+    .card:hover {{
+        transform: translateY(-6px);
+        box-shadow: 0 26px 55px rgba(0,0,0,0.35);
+    }}
+
+    @keyframes fadeInUp {{
+        from {{
+            opacity: 0;
+            transform: translateY(18px);
+        }}
+        to {{
+            opacity: 1;
+            transform: translateY(0);
+        }}
+    }}
+
+    .title {{
+        font-size: 22px;
+        font-weight: 700;
+    }}
+
+    .sub {{
+        color: {sub} !important;
+    }}
+
+    .badge {{
+        background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+        color: white;
+        padding: 6px 14px;
+        border-radius: 999px;
+        font-size: 12px;
+        margin-left: 6px;
+    }}
+
+    /* Streamlit button targeting */
+    .stButton>button, button {{
+        background: linear-gradient(135deg,#2563eb,#38bdf8) !important;
+        color: white !important;
+        border-radius: 14px !important;
+        font-weight: 600 !important;
+        border: none !important;
+    }}
+
+    .stButton>button:hover, button:hover {{
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(37,99,235,0.45) !important;
+    }}
+
+    /* Ensure main container backgrounds are transparent so .card shows through */
+    [data-testid="stAppViewContainer"] .css-1d391kg, /* class may vary */
+    [data-testid="stAppViewContainer"] .main {{
+        background: transparent !important;
+    }}
+
+    </style>
+    """, unsafe_allow_html=True)
     with st.sidebar:
         st.markdown("## 🎓 Internship Portal")
         st.caption("AI-driven internship matching")
