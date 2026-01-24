@@ -8,6 +8,6 @@ timeout /t 3 /nobreak >nul
 
 echo Starting Internship Analytics App...
 cd /d "C:\Users\sunil\Desktop\Internship_Demand_Analytics"
-python -m streamlit run app.py --server.headless true --server.port 8505
+python -m streamlit run app.py --server.headless true --server.port 8505 --server.address 10.93.3.148 --server.sslCertFile certs/server.crt --server.sslKeyFile certs/server.key
 
 pause

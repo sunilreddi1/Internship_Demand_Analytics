@@ -14,4 +14,4 @@ if ($connections) {
 
 Write-Host "Starting Internship Analytics App..." -ForegroundColor Green
 Set-Location "C:\Users\sunil\Desktop\Internship_Demand_Analytics"
-python -m streamlit run app.py
+python -m streamlit run app.py --server.address 10.93.3.148 --server.sslCertFile certs/server.crt --server.sslKeyFile certs/server.key
