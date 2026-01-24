@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import psycopg2
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from .preprocess import preprocess_data
 
 def db():
@@ -10,8 +10,12 @@ def db():
         st.session_state.db_fallback_shown = False
 
     try:
-        # Return SQLAlchemy engine for PostgreSQL
-        return create_engine(st.secrets["db"]["url"])
+        # Try to create and test PostgreSQL connection
+        engine = create_engine(st.secrets["db"]["url"])
+        # Test the connection
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return engine
     except Exception as e:
         if not st.session_state.db_fallback_shown:
             st.info("🔄 Using local database for testing. Your data will be stored locally.")

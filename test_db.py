@@ -1,6 +1,6 @@
 import psycopg2
 import sqlite3
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 def db():
     try:
@@ -10,6 +10,9 @@ def db():
             "/neondb?sslmode=require"
         )
         engine = create_engine(DATABASE_URL)
+        # Test the connection
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         print("✅ CONNECTED TO NEON SUCCESSFULLY")
         return engine
     except Exception as e:

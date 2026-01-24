@@ -5,7 +5,7 @@ import bcrypt
 import numpy as np
 import re
 import PyPDF2
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from src.demand_model import build_features, train_model
 from src.preprocess import preprocess_data
 
@@ -132,8 +132,12 @@ def db():
         st.session_state.db_fallback_shown = False
 
     try:
-        # Return SQLAlchemy engine for PostgreSQL
-        return create_engine(st.secrets["db"]["url"])
+        # Try to create and test PostgreSQL connection
+        engine = create_engine(st.secrets["db"]["url"])
+        # Test the connection
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return engine
     except Exception as e:
         if not st.session_state.db_fallback_shown:
             st.info("🔄 Using local database for testing. Your data will be stored locally.")
@@ -352,8 +356,7 @@ if not st.session_state.user:
 else:
     if st.session_state.role == "Student":
         df = preprocess_data()
-        model, acc = train_model(df)
-        st.info(f"📈 ML Demand Accuracy: {acc}%")
+        model, _ = train_model(df)  # Removed accuracy display
 
         tab1, tab2 = st.tabs(["🔎 Search Internships", "📋 My Applications"])
 
