@@ -153,8 +153,8 @@ def train_advanced_model(df, target_column='applications_count', model_type='rf'
 @st.cache_resource
 def train_model(df):
     """Legacy function for backward compatibility"""
-    X = df[["stipend","skill_count","company_score","is_remote"]]
-    y = df["demand"]
+    X = df[["stipend","tech_skill_count","company_score","is_remote"]]
+    y = df["demand_score"]  # Use demand_score instead of demand
     model = LinearRegression().fit(X, y)
     return model, round(r2_score(y, model.predict(X))*100, 2)
 
