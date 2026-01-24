@@ -127,10 +127,6 @@ body {{
 
 # ================= DATABASE =================
 def db():
-    # Check if we've already shown the fallback warning this session
-    if not hasattr(st.session_state, 'db_fallback_shown'):
-        st.session_state.db_fallback_shown = False
-
     try:
         # Try to create and test PostgreSQL connection
         engine = create_engine(st.secrets["db"]["url"])
@@ -139,10 +135,7 @@ def db():
             conn.execute(text("SELECT 1"))
         return engine
     except Exception as e:
-        if not st.session_state.db_fallback_shown:
-            st.info("🔄 Using local database for testing. Your data will be stored locally.")
-            st.session_state.db_fallback_shown = True
-        # Fallback to local SQLite for development
+        # Fallback to local SQLite for development (silent fallback)
         return create_engine("sqlite:///users.db")
 
 def init_db():
