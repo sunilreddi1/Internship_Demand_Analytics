@@ -53,9 +53,11 @@ Institutions and placement cells also lack analytical insights into internship t
 
 ### 👨‍🎓 Enhanced Student Interface
 - **Smart Search**: Advanced filtering by location, skills, company, stipend, and work type
+- **Pagination**: Browse all search results across multiple pages (Previous/Next + numbered buttons)
 - **AI Recommendations**: Personalized internship suggestions based on user profile and history
 - **Application Tracking**: Monitor application status and manage submissions
 - **Resume Upload**: PDF resume parsing for skill extraction and matching
+- **Network Sharing**: Share app with other devices on the same network
 
 ### 🔍 Live Search Integration
 - **Adzuna API**: Real-time internship search with live job listings
@@ -128,17 +130,17 @@ Internship_Demand_Analytics/
 
 4. **Run the Application**
    ```bash
-   # Recommended: Use the provided scripts to avoid port conflicts
-   # Windows:
-   run_app.bat
-
-   # Or manually:
+   # For local access only:
    streamlit run app.py
+
+   # For sharing with other devices on the same network:
+   streamlit run app.py --server.address 0.0.0.0 --server.port 8501
    ```
 
 5. **Access the application**
-   - Student Interface: `http://localhost:8505`
-   - Admin Dashboard: Navigate to admin section in the app
+   - **Local Access**: `http://localhost:8501`
+   - **Network Sharing**: `http://YOUR_LOCAL_IP:8501` (e.g., `http://10.93.3.148:8501`)
+   - **Admin Dashboard**: Navigate to admin section in the app
 
 ----------------------------------------
 
@@ -148,8 +150,9 @@ Internship_Demand_Analytics/
 1. **Registration/Login**: Create an account or login with existing credentials
 2. **Profile Setup**: Upload your resume (PDF) and set preferences
 3. **Smart Search**: Use filters to find internships by location, skills, stipend, etc.
-4. **AI Recommendations**: Get personalized suggestions based on your profile
-5. **Apply**: Submit applications and track their status
+4. **Browse Results**: Navigate through all matching internships using pagination (Previous/Next buttons and page numbers)
+5. **AI Recommendations**: Get personalized suggestions based on your profile
+6. **Apply**: Submit applications and track their status
 
 ### For Administrators
 1. **Login**: Use admin credentials to access the dashboard
@@ -173,10 +176,12 @@ Internship_Demand_Analytics/
 3. **Analysis Insights**: Review console output for detailed statistical summaries
 
 ### Key Features in Action
+- **Smart Search with Pagination**: Find internships and browse all results across multiple pages
 - **Demand Prediction**: Input internship parameters to predict demand levels
 - **Resume Parsing**: Upload PDF resumes to extract skills automatically
 - **Live Search**: Search real-time internships using the Adzuna API
 - **Recommendation Engine**: Get personalized internship matches
+- **Network Sharing**: Share the app with other devices on your local network
 
 ----------------------------------------
 
@@ -263,17 +268,26 @@ adzuna_app_key = "your_adzuna_app_key"
 
 ----------------------------------------
 
-## �🚀 Deployment
+## 🚀 Deployment
 
 ### Local Development
 ```bash
-# Use provided scripts to avoid port issues
-./run_app.bat  # Windows
-./run_app.ps1  # PowerShell
+# Basic local run:
+streamlit run app.py
+
+# Share with other devices on the same network:
+streamlit run app.py --server.address 0.0.0.0 --server.port 8501
+# Then access at: http://YOUR_LOCAL_IP:8501
 ```
 
+### Network Sharing
+1. **Get your local IP**: Run `ipconfig` (Windows) or `ifconfig` (Linux/Mac)
+2. **Run with network binding**: Use `--server.address 0.0.0.0`
+3. **Share the URL**: `http://YOUR_IP:8501` with others on the same network
+4. **Firewall**: Ensure port 8501 is open for incoming connections
+
 ### Streamlit Cloud
-1. Connect GitHub repository
+1. Connect GitHub repository at [share.streamlit.io](https://share.streamlit.io)
 2. Set secrets in dashboard
 3. Deploy from main branch
 
@@ -342,10 +356,13 @@ For questions or issues:
 ----------------------------------------
 
 ## Live Demo
-**Streamlit App**: [https://internship-demand-analytics.streamlit.app](https://internship-demand-analytics.streamlit.app)
+**Local Access**: `http://localhost:8501` (when running locally)
+**Network Sharing**: `http://YOUR_LOCAL_IP:8501` (shareable on local network)
+**Streamlit Cloud**: [https://internship-demand-analytics.streamlit.app](https://internship-demand-analytics.streamlit.app) (when deployed)
 
 ----------------------------------------
 
 **Author**: V. Sunil Reddy
 **Project**: Final Year B.Tech Project
 **Institution**: Your Institution Name
+**Latest Update**: January 2026 - Added pagination, network sharing, and UI improvements
