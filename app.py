@@ -752,20 +752,6 @@ def main():
 
             tab1, tab2, tab3 = st.tabs(["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications"])
 
-            # Colorful welcome header
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        padding: 20px; 
-                        border-radius: 15px; 
-                        margin-bottom: 20px; 
-                        text-align: center; 
-                        color: white; 
-                        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);">
-                <h1 style="margin: 0; font-size: 2.5em; font-weight: 700;">🎓 Welcome to Internship Portal</h1>
-                <p style="margin: 10px 0 0 0; font-size: 1.2em; opacity: 0.9;">Find your perfect internship match with AI-powered recommendations</p>
-            </div>
-            """, unsafe_allow_html=True)
-
             with tab1:
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
 
