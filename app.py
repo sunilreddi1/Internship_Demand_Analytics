@@ -38,12 +38,16 @@ def db():
             try:
                 if hasattr(st, 'secrets') and 'db' in st.secrets and 'url' in st.secrets['db']:
                     from sqlalchemy import create_engine, text
-                    engine = create_engine(st.secrets["db"]["url"])
-                    # Test the connection
+                    engine = create_engine(st.secrets["db"]["url"], connect_args={
+                        'connect_timeout': 10,  # 10 second timeout
+                        'sslmode': 'require'
+                    })
+                    # Test the connection with timeout
                     with engine.connect() as conn:
                         conn.execute(text("SELECT 1"))
                     return engine
-            except:
+            except Exception as e:
+                print(f"PostgreSQL connection failed, falling back to SQLite: {e}")
                 pass  # Fall through to SQLite
     except:
         pass  # Not in Streamlit context
@@ -521,7 +525,11 @@ def main():
     # ================= STUDENT =================
     else:
         if st.session_state.role == "Student":
-            df = preprocess_data()
+            @st.cache_data
+            def load_data():
+                return preprocess_data()
+
+            df = load_data()
             from src.recommender import get_personalized_recommendations
 
             tab1, tab2, tab3 = st.tabs(["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications"])
