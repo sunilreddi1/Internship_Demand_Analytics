@@ -905,8 +905,8 @@ def main():
                     end_idx = start_idx + items_per_page
                     page_results = display_results.iloc[start_idx:end_idx]
 
-                    for i, j in page_results.iterrows():
-                        display_internship_card(j, f"{st.session_state.current_page}_{i}", st.session_state.applied_titles_cache)
+                    for counter, (i, j) in enumerate(page_results.iterrows()):
+                        display_internship_card(j, f"job_{st.session_state.current_page}_{counter}", st.session_state.applied_titles_cache)
 
                     # Pagination controls at the bottom
                     if total_pages > 1:
@@ -1030,8 +1030,8 @@ def main():
                             rec_end_idx = rec_start_idx + rec_items_per_page
                             page_recommendations = recommendations.iloc[rec_start_idx:rec_end_idx]
 
-                            for idx, rec in page_recommendations.iterrows():
-                                display_recommendation_card(rec, f"rec_{st.session_state.rec_current_page}_{idx}", applied_titles)
+                            for counter, (idx, rec) in enumerate(page_recommendations.iterrows()):
+                                display_recommendation_card(rec, f"rec_{st.session_state.rec_current_page}_{counter}", applied_titles)
 
                             # Pagination controls at the bottom for recommendations
                             if rec_total_pages > 1:
