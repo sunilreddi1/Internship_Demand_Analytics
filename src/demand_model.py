@@ -82,7 +82,6 @@ def build_features(df):
     """Legacy function for backward compatibility"""
     return build_advanced_features(df)
 
-@st.cache_resource
 def train_advanced_model(df, target_column='applications_count', model_type='rf'):
     """
     Train advanced ML models for internship demand prediction
@@ -150,7 +149,6 @@ def train_advanced_model(df, target_column='applications_count', model_type='rf'
 
     return model, scaler, feature_columns, metrics
 
-@st.cache_resource
 def train_model(df):
     """Legacy function for backward compatibility"""
     X = df[["stipend","tech_skill_count","company_score","is_remote"]]
