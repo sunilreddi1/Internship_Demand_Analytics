@@ -100,13 +100,15 @@ def calculate_content_based_score(user_profile, job_data):
 
     return min(score, max_score), round(skill_score, 2)
 
-def calculate_collaborative_score(user_id, job_id, applications_df):
+def calculate_collaborative_score(user_id, job_title, company, location, applications_df):
     """
     Collaborative filtering based on similar users' preferences
 
     Args:
         user_id: Current user ID
-        job_id: Job ID to score
+        job_title: Job title to score
+        company: Company name
+        location: Job location
         applications_df: DataFrame with user-job interactions
 
     Returns:
@@ -115,15 +117,19 @@ def calculate_collaborative_score(user_id, job_id, applications_df):
     if applications_df is None or applications_df.empty:
         return 50  # Neutral score if no data
 
-    # Find users who applied to similar jobs
-    similar_job_applications = applications_df[applications_df['job_id'] == job_id]
+    # Find applications for similar jobs (same title, company, or location)
+    similar_applications = applications_df[
+        (applications_df['job_title'].str.lower() == job_title.lower()) |
+        (applications_df['company'].str.lower() == company.lower()) |
+        (applications_df['location'].str.lower() == location.lower())
+    ]
 
-    if similar_job_applications.empty:
+    if similar_applications.empty:
         return 50
 
     # Calculate popularity score based on applications
-    total_applications = len(similar_job_applications)
-    score = min(total_applications * 2, 100)  # Scale popularity to 0-100
+    total_applications = len(similar_applications)
+    score = min(total_applications * 5, 100)  # Scale popularity to 0-100
 
     return score
 
@@ -151,7 +157,9 @@ def hybrid_recommendation_engine(user_profile, jobs_df, applications_df=None, to
         if applications_df is not None:
             collab_score = calculate_collaborative_score(
                 user_profile.get('user_id', 'anonymous'),
-                job.get('id', job.get('title', '')),
+                job.get('title', ''),
+                job.get('company', ''),
+                job.get('location', ''),
                 applications_df
             )
 
