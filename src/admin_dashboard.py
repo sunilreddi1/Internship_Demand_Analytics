@@ -10,21 +10,26 @@ from .demand_model import train_advanced_model
 import numpy as np
 
 def db():
+    # Completely safe database connection - no Streamlit calls during import
     try:
-        # Try to create and test PostgreSQL connection
-        # Only access secrets when in Streamlit context
-        try:
-            engine = create_engine(st.secrets["db"]["url"])
-            # Test the connection
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            return engine
-        except:
-            pass  # Not in Streamlit context or secrets not available
-    except Exception as e:
-        pass
+        # Only try PostgreSQL if we're in a proper Streamlit runtime context
+        import streamlit as st
+        if hasattr(st, 'runtime') and st.runtime.exists():
+            try:
+                if hasattr(st, 'secrets') and 'db' in st.secrets and 'url' in st.secrets['db']:
+                    from sqlalchemy import create_engine, text
+                    engine = create_engine(st.secrets["db"]["url"])
+                    # Test the connection
+                    with engine.connect() as conn:
+                        conn.execute(text("SELECT 1"))
+                    return engine
+            except:
+                pass  # Fall through to SQLite
+    except:
+        pass  # Not in Streamlit context
 
-    # Fallback to local SQLite for development
+    # Always fallback to local SQLite for development/safety
+    from sqlalchemy import create_engine
     return create_engine("sqlite:///users.db")
 
 def show_admin_dashboard():

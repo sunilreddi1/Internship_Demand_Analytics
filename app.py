@@ -18,31 +18,38 @@ except ImportError:
     HAS_PSYCOPG2 = False
 
 def current_user():
-    # Only access session state when running in Streamlit context
+    # Only access session state when in proper Streamlit runtime context
     try:
-        return st.session_state.user.strip().lower()
+        import streamlit as st
+        if hasattr(st, 'runtime') and st.runtime.exists() and hasattr(st, 'session_state') and 'user' in st.session_state:
+            return st.session_state.user.strip().lower()
     except:
-        return None
+        pass
+    return None
 
 # ================= DATABASE =================
 # ================= DATABASE =================
 def db():
+    # Completely safe database connection - no Streamlit calls during import
     try:
-        # Try to create and test PostgreSQL connection
-        # Only try if secrets are available and we're in Streamlit context
-        try:
-            if hasattr(st, 'secrets') and 'db' in st.secrets and 'url' in st.secrets['db']:
-                engine = create_engine(st.secrets["db"]["url"])
-                # Test the connection
-                with engine.connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                return engine
-        except:
-            pass  # Not in Streamlit context or secrets not available
-    except Exception as e:
-        pass  # Fall through to SQLite
+        # Only try PostgreSQL if we're in a proper Streamlit runtime context
+        import streamlit as st
+        if hasattr(st, 'runtime') and st.runtime.exists():
+            try:
+                if hasattr(st, 'secrets') and 'db' in st.secrets and 'url' in st.secrets['db']:
+                    from sqlalchemy import create_engine, text
+                    engine = create_engine(st.secrets["db"]["url"])
+                    # Test the connection
+                    with engine.connect() as conn:
+                        conn.execute(text("SELECT 1"))
+                    return engine
+            except:
+                pass  # Fall through to SQLite
+    except:
+        pass  # Not in Streamlit context
 
-    # Fallback to local SQLite for development (silent fallback)
+    # Always fallback to local SQLite for development/safety
+    from sqlalchemy import create_engine
     return create_engine("sqlite:///users.db")
 
 def init_db():
