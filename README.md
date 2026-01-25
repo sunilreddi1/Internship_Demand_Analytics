@@ -43,14 +43,26 @@ App will be available at: http://localhost:8503
 
 ### Public Access (Share with Others)
 ```powershell
-# Start app with public URL using ngrok
+# Start app with automatic public URL using ngrok
 .\start_app.ps1
 ```
-This automatically starts both Streamlit and ngrok for public sharing. See `PUBLIC_ACCESS_GUIDE.md` for detailed instructions.
+This automatically starts both Streamlit and ngrok with cleanup. See `PUBLIC_ACCESS_GUIDE.md` for detailed instructions.
 
-### Manual Setup
-1. Ensure Python environment is activated
-2. Run: `streamlit run app.py --server.port 8503 --server.address localhost`
+### Manual Public Access
+```powershell
+# Start ngrok tunnel (with automatic cleanup)
+.\ngrok_permanent.ps1
+```
+Or use the batch file:
+```batch
+public_access.bat
+```
+
+### Troubleshooting
+If you get ngrok errors, the scripts automatically clean up existing processes. For manual cleanup:
+```powershell
+Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
+```
 
 ----------------------------------------
 
