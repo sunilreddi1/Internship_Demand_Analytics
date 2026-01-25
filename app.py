@@ -445,7 +445,8 @@ def main():
         "role": None,
         "page": "search",
         "resume_skills": [],
-        "dark": False
+        "dark": False,
+        "active_tab": 0
     }.items():
         if k not in st.session_state:
             st.session_state[k] = v
@@ -750,9 +751,14 @@ def main():
             df = load_data()
             from src.recommender import get_personalized_recommendations
 
-            tab1, tab2, tab3 = st.tabs(["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications"])
+            # Navigation using radio buttons for programmatic control
+            tab_options = ["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications"]
+            active_tab = st.radio("Navigation", tab_options, index=st.session_state.active_tab, horizontal=True, label_visibility="collapsed")
 
-            with tab1:
+            # Update session state when user changes tab
+            st.session_state.active_tab = tab_options.index(active_tab)
+
+            if active_tab == "🔎 Smart Search":
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
 
                 pdf = st.file_uploader("📄 Upload Resume (PDF)", type=["pdf"])
@@ -930,13 +936,14 @@ def main():
                 else:
                     st.markdown("<h3>🔍 Enter skills and click 'Find Internships' to search</h3>", unsafe_allow_html=True)
 
-            with tab2:
+            elif active_tab == "🎯 AI Recommendations":
                 # Back button for recommendations
                 col1, col2 = st.columns([1, 4])
                 with col1:
                     if st.button("⬅️ Back to Search", type="secondary", use_container_width=True, key="back_to_search_from_recommendations"):
-                        # Switch to search tab (tab1)
-                        st.rerun()  # This will refresh and user can click the search tab
+                        # Switch to search tab
+                        st.session_state.active_tab = 0
+                        st.rerun()
                 with col2:
                     st.markdown("### 🤖 AI-Powered Recommendations")
                     st.caption("Get personalized internship matches based on your skills and preferences")
@@ -1054,13 +1061,14 @@ def main():
 
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            with tab3:
+            elif active_tab == "📋 My Applications":
                 # Back button for applications
                 col1, col2 = st.columns([1, 4])
                 with col1:
                     if st.button("⬅️ Back to Search", type="secondary", use_container_width=True, key="back_to_search_from_applications"):
-                        # Switch to search tab (tab1)
-                        st.rerun()  # This will refresh and user can click the search tab
+                        # Switch to search tab
+                        st.session_state.active_tab = 0
+                        st.rerun()
                 with col2:
                     st.markdown("### 📋 My Applications")
                     st.caption("Track all your internship applications")
