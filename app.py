@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import bcrypt
 import numpy as np
@@ -240,7 +241,7 @@ def display_internship_card(job, key_suffix, applied_titles):
     col1, col2 = st.columns([4, 1])
 
     with col1:
-        st.markdown(f"""
+        components.html(f"""
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
@@ -257,7 +258,7 @@ def display_internship_card(job, key_suffix, applied_titles):
                 {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """)
 
     with col2:
         if not already_applied:
@@ -305,7 +306,7 @@ def display_recommendation_card(rec, idx, applied_titles):
     col1, col2 = st.columns([4, 1])
 
     with col1:
-        st.markdown(f"""
+        components.html(f"""
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
@@ -323,7 +324,7 @@ def display_recommendation_card(rec, idx, applied_titles):
                 {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """)
 
     with col2:
         if not already_applied:
