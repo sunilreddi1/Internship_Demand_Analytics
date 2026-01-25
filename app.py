@@ -295,6 +295,24 @@ def display_internship_card(job, key_suffix, applied_titles):
                             conn.commit()
 
                     st.success("Applied successfully!")
+                    # Refresh applied titles cache
+                    try:
+                        engine = db()
+                        if 'postgresql' in str(engine.url):
+                            applied_jobs = pd.read_sql("""
+                                SELECT DISTINCT job_title
+                                FROM applications
+                                WHERE LOWER(username)=%(username)s
+                            """, engine, params={'username': current_user()})
+                        else:
+                            applied_jobs = pd.read_sql_query("""
+                                SELECT DISTINCT job_title
+                                FROM applications
+                                WHERE LOWER(username)=LOWER(?)
+                            """, engine, params=(current_user(),))
+                        st.session_state.applied_titles_cache = applied_jobs['job_title'].str.lower().tolist() if not applied_jobs.empty else []
+                    except:
+                        pass
                     st.rerun()
                 except Exception as e:
                     st.error(f"Application failed: {e}")
@@ -362,6 +380,24 @@ def display_recommendation_card(rec, idx, applied_titles):
                             conn.commit()
 
                     st.success("Applied successfully!")
+                    # Refresh applied titles cache
+                    try:
+                        engine = db()
+                        if 'postgresql' in str(engine.url):
+                            applied_jobs = pd.read_sql("""
+                                SELECT DISTINCT job_title
+                                FROM applications
+                                WHERE LOWER(username)=%(username)s
+                            """, engine, params={'username': current_user()})
+                        else:
+                            applied_jobs = pd.read_sql_query("""
+                                SELECT DISTINCT job_title
+                                FROM applications
+                                WHERE LOWER(username)=LOWER(?)
+                            """, engine, params=(current_user(),))
+                        st.session_state.applied_titles_cache = applied_jobs['job_title'].str.lower().tolist() if not applied_jobs.empty else []
+                    except:
+                        pass
                     st.rerun()
                 except Exception as e:
                     st.error(f"Application failed: {e}")
@@ -374,8 +410,14 @@ def main():
     st.set_page_config(
         page_title="Internship Demand & Recommendation Portal",
         page_icon="🎓",
-        layout="wide"
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
+
+    # Set default server port to 8502
+    import os
+    os.environ['STREAMLIT_SERVER_PORT'] = '8502'
+    os.environ['STREAMLIT_SERVER_ADDRESS'] = 'localhost'
 
     # ================= SESSION =================
     for k, v in {
@@ -576,6 +618,14 @@ def main():
                 skill = st.text_input("Skills", value=", ".join(st.session_state.resume_skills))
                 city = st.selectbox("Preferred City", ["All"] + sorted(df["location"].dropna().unique()))
 
+                # Initialize search state in session
+                if 'search_performed' not in st.session_state:
+                    st.session_state.search_performed = False
+                if 'search_results' not in st.session_state:
+                    st.session_state.search_results = pd.DataFrame()
+                if 'applied_titles_cache' not in st.session_state:
+                    st.session_state.applied_titles_cache = []
+
                 # Show internships by default, filtered by search criteria
                 keywords = [k.strip().lower() for k in skill.split(",") if k.strip()]
                 results = df if not keywords else df[
@@ -601,8 +651,9 @@ def main():
                         """, engine, params=(current_user(),))
 
                     applied_titles = applied_jobs['job_title'].str.lower().tolist() if not applied_jobs.empty else []
+                    st.session_state.applied_titles_cache = applied_titles
                 except:
-                    applied_titles = []
+                    applied_titles = st.session_state.applied_titles_cache
 
                 results = results.copy()
                 # Enhanced scoring for search results including skill matching
@@ -634,29 +685,75 @@ def main():
                 # Show top internships
                 results = results.sort_values("score", ascending=False)
 
-                if st.button("🔎 Find Internships"):
-                    st.markdown(f"<h3>🎯 Found {len(results)} internships matching your criteria</h3>", unsafe_allow_html=True)
+                if st.button("🔎 Find Internships") or st.session_state.search_performed:
+                    if st.button("🔎 Find Internships"):
+                        # New search - perform the search and store results
+                        st.session_state.search_performed = True
+                        st.session_state.current_page = 0
+
+                        # Perform the search
+                        keywords = [k.strip().lower() for k in skill.split(",") if k.strip()]
+                        results = df if not keywords else df[
+                            df["description"].str.lower().apply(lambda x: any(k in x for k in keywords))
+                        ]
+                        if city != "All":
+                            results = results[results["location"].str.contains(city, case=False)]
+
+                        # Enhanced scoring for search results including skill matching
+                        user_skills = st.session_state.resume_skills if st.session_state.resume_skills else []
+
+                        def calculate_search_score(row):
+                            base_score = row["stipend"] * 0.01 + row["company_score"] * 10 + row["is_remote"] * 5
+
+                            # Add skill matching score if user has skills
+                            skill_score = 0
+                            if user_skills and pd.notna(row.get('skills_required')):
+                                job_skills = set(str(row['skills_required']).split(', '))
+                                matched_skills = len(set(user_skills).intersection(job_skills))
+                                total_job_skills = len(job_skills)
+                                if total_job_skills > 0:
+                                    skill_score = (matched_skills / total_job_skills) * 50  # Up to 50 points for perfect skill match
+
+                            return base_score + skill_score
+
+                        results = results.copy()
+                        results["score"] = results.apply(calculate_search_score, axis=1)
+                        results["skill_score"] = results.apply(
+                            lambda row: round(calculate_skill_score_only(row, user_skills), 2) if user_skills else 0,
+                            axis=1
+                        )
+
+                        # Filter out already applied internships
+                        results = results[~results["title"].str.lower().isin(applied_titles)]
+
+                        # Store results in session state
+                        st.session_state.search_results = results.sort_values("score", ascending=False)
+
+                    # Use stored results for display
+                    display_results = st.session_state.search_results
+
+                    st.markdown(f"<h3>🎯 Found {len(display_results)} internships matching your criteria</h3>", unsafe_allow_html=True)
 
                     # Pagination setup
                     items_per_page = 10
-                    total_pages = (len(results) + items_per_page - 1) // items_per_page  # Ceiling division
+                    total_pages = (len(display_results) + items_per_page - 1) // items_per_page  # Ceiling division
 
                     if 'current_page' not in st.session_state:
                         st.session_state.current_page = 0
 
                     # Ensure current_page is within bounds
                     if st.session_state.current_page >= total_pages:
-                        st.session_state.current_page = total_pages - 1
+                        st.session_state.current_page = max(0, total_pages - 1)
                     if st.session_state.current_page < 0:
                         st.session_state.current_page = 0
 
                     # Display internships for current page
                     start_idx = st.session_state.current_page * items_per_page
                     end_idx = start_idx + items_per_page
-                    page_results = results.sort_values("score", ascending=False).iloc[start_idx:end_idx]
+                    page_results = display_results.iloc[start_idx:end_idx]
 
                     for i, j in page_results.iterrows():
-                        display_internship_card(j, f"{st.session_state.current_page}_{i}", applied_titles)
+                        display_internship_card(j, f"{st.session_state.current_page}_{i}", st.session_state.applied_titles_cache)
 
                     # Pagination controls at the bottom
                     if total_pages > 1:
