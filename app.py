@@ -244,7 +244,7 @@ def display_internship_card(job, key_suffix, applied_titles):
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                    <h3 class="title">{job["title"]}</h3>
+                    <h3 class="title">{job["title"][:50]}</h3>
                     <p class="sub">{job["company"]} • {job["location"]}</p>
                 </div>
                 <div style="text-align: right;">
@@ -422,6 +422,7 @@ def main():
         box-shadow: 0 18px 36px rgba(0,0,0,0.25);
         animation: fadeInUp 0.6s ease both;
         transition: transform .25s ease, box-shadow .25s ease;
+        min-height: 200px;
     }}
 
     .card:hover {{
@@ -443,7 +444,8 @@ def main():
     .title {{
         font-size: 22px;
         font-weight: 700;
-        letter-spacing: normal;
+        letter-spacing: normal !important;
+        text-align: left;
     }}
 
     .sub {{
