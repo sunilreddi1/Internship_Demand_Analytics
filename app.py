@@ -443,6 +443,7 @@ def main():
     .title {{
         font-size: 22px;
         font-weight: 700;
+        letter-spacing: normal;
     }}
 
     .sub {{
