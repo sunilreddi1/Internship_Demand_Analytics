@@ -90,7 +90,8 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE,
-                    password TEXT,
+                    email TEXT UNIQUE,
+                    password BLOB,
                     role TEXT
                 );
                 """)
@@ -158,16 +159,21 @@ def register_user(username, email, password, role):
             with engine.connect() as conn:
                 # Check if user exists
                 result = conn.execute(text("""
-                    SELECT username FROM users WHERE LOWER(username)=? OR email=?
-                """), (username.lower(), email))
+                    SELECT username FROM users WHERE LOWER(username)=:username OR email=:email
+                """), {"username": username.lower(), "email": email})
                 if result.fetchone():
                     return False, "User already exists"
 
                 # Insert new user
                 conn.execute(text("""
-                    INSERT INTO users (username, password, role)
-                    VALUES (?, ?, ?)
-                """), (username.lower().strip(), hashed.decode(), role))
+                    INSERT INTO users (username, email, password, role)
+                    VALUES (:username, :email, :password, :role)
+                """), {
+                    "username": username.lower().strip(),
+                    "email": email,
+                    "password": hashed,
+                    "role": role
+                })
                 conn.commit()
 
         return True, "Account created successfully"
@@ -188,11 +194,11 @@ def validate_login(username, password):
         else:  # SQLite
             with engine.connect() as conn:
                 result = conn.execute(text("""
-                    SELECT password, role FROM users WHERE LOWER(username)=?
-                """), (username.lower(),))
+                    SELECT password, role FROM users WHERE LOWER(username)=:username
+                """), {"username": username.lower()})
                 user_data = result.fetchone()
 
-        if user_data and bcrypt.checkpw(password.encode(), user_data[0] if 'postgresql' in str(engine.url) else user_data[0].encode()):
+        if user_data and bcrypt.checkpw(password.encode(), user_data[0] if 'postgresql' in str(engine.url) else user_data[0]):
             return user_data[1]  # Return role
         return None
     except Exception as e:
@@ -275,8 +281,13 @@ def display_internship_card(job, key_suffix, applied_titles):
                         with engine.connect() as conn:
                             conn.execute(text("""
                                 INSERT INTO applications (username, job_title, company, location)
-                                VALUES (?, ?, ?, ?)
-                            """), (current_user(), job["title"], job["company"], job["location"]))
+                                VALUES (:username, :job_title, :company, :location)
+                            """), {
+                                "username": current_user(),
+                                "job_title": job["title"],
+                                "company": job["company"],
+                                "location": job["location"]
+                            })
                             conn.commit()
 
                     st.success("Application submitted!")
@@ -336,8 +347,13 @@ def display_recommendation_card(rec, idx, applied_titles):
                         with engine.connect() as conn:
                             conn.execute(text("""
                                 INSERT INTO applications (username, job_title, company, location)
-                                VALUES (?, ?, ?, ?)
-                            """), (current_user(), rec["title"], rec["company"], rec["location"]))
+                                VALUES (:username, :job_title, :company, :location)
+                            """), {
+                                "username": current_user(),
+                                "job_title": rec["title"],
+                                "company": rec["company"],
+                                "location": rec["location"]
+                            })
                             conn.commit()
 
                     st.success("Application submitted!")
