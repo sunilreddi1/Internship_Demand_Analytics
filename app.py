@@ -18,15 +18,17 @@ try:
 except ImportError:
     HAS_PSYCOPG2 = False
 
-def current_user():
-    # Only access session state when in proper Streamlit runtime context
-    try:
-        import streamlit as st
-        if hasattr(st, 'runtime') and st.runtime.exists() and hasattr(st, 'session_state') and 'user' in st.session_state:
-            return st.session_state.user.strip().lower()
-    except:
-        pass
-    return None
+def calculate_skill_score_only(row, user_skills):
+    """Calculate pure skill matching score for display"""
+    if not user_skills or pd.isna(row.get('skills_required')):
+        return 0
+
+    job_skills = set(str(row['skills_required']).split(', '))
+    if not job_skills:
+        return 0
+
+    matched_skills = len(set(user_skills).intersection(job_skills))
+    return (matched_skills / len(job_skills)) * 100
 
 # ================= DATABASE =================
 # ================= DATABASE =================
@@ -255,6 +257,7 @@ def display_internship_card(job, key_suffix, applied_titles):
             </div>
             <p style="margin: 12px 0; color: #64748b; white-space: normal; word-wrap: break-word; line-height: 1.5; font-size: 14px;">{job["description"][:500]}...</p>
             <div style="display: flex; gap: 8px; margin-top: 12px;">
+                {f'<span class="badge" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">Skills: {job.get("skill_score", 0)}%</span>' if job.get("skill_score", 0) > 0 else ""}
                 {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
             </div>
         </div>
@@ -320,7 +323,8 @@ def display_recommendation_card(rec, idx, applied_titles):
             </div>
             <p style="margin: 12px 0; color: #64748b; white-space: normal; word-wrap: break-word; line-height: 1.5; font-size: 14px;">{rec["description"][:500]}...</p>
             <div style="display: flex; gap: 8px; margin-top: 12px;">
-                <span class="badge" style="background: linear-gradient(135deg, #8b5cf6, #a78bfa);">AI Match</span>
+                <span class="badge" style="background: linear-gradient(135deg, #8b5cf6, #a78bfa);">AI Match: {rec.get('recommendation_score', 'N/A')}</span>
+                <span class="badge" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">Skills: {rec.get('skill_score', 'N/A')}%</span>
                 {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
             </div>
         </div>
@@ -601,35 +605,71 @@ def main():
                     applied_titles = []
 
                 results = results.copy()
-                # Use basic scoring for search results
-                results["score"] = results["stipend"] * 0.01 + results["company_score"] * 10 + results["is_remote"] * 5
+                # Enhanced scoring for search results including skill matching
+                user_skills = st.session_state.resume_skills if st.session_state.resume_skills else []
+
+                def calculate_search_score(row):
+                    base_score = row["stipend"] * 0.01 + row["company_score"] * 10 + row["is_remote"] * 5
+
+                    # Add skill matching score if user has skills
+                    skill_score = 0
+                    if user_skills and pd.notna(row.get('skills_required')):
+                        job_skills = set(str(row['skills_required']).split(', '))
+                        matched_skills = len(set(user_skills).intersection(job_skills))
+                        total_job_skills = len(job_skills)
+                        if total_job_skills > 0:
+                            skill_score = (matched_skills / total_job_skills) * 50  # Up to 50 points for perfect skill match
+
+                    return base_score + skill_score
+
+                results["score"] = results.apply(calculate_search_score, axis=1)
+                results["skill_score"] = results.apply(
+                    lambda row: round(calculate_skill_score_only(row, user_skills), 2) if user_skills else 0,
+                    axis=1
+                )
 
                 # Filter out already applied internships
                 results = results[~results["title"].str.lower().isin(applied_titles)]
 
-                # Show top 10 internships
+                # Show top internships
                 results = results.sort_values("score", ascending=False)
 
                 if st.button("🔎 Find Internships"):
                     st.markdown(f"<h3>🎯 Found {len(results)} internships matching your criteria</h3>", unsafe_allow_html=True)
 
-                    # Pagination
+                    # Pagination setup
                     items_per_page = 10
                     total_pages = (len(results) + items_per_page - 1) // items_per_page  # Ceiling division
 
                     if 'current_page' not in st.session_state:
                         st.session_state.current_page = 0
 
+                    # Ensure current_page is within bounds
+                    if st.session_state.current_page >= total_pages:
+                        st.session_state.current_page = total_pages - 1
+                    if st.session_state.current_page < 0:
+                        st.session_state.current_page = 0
+
+                    # Display internships for current page
+                    start_idx = st.session_state.current_page * items_per_page
+                    end_idx = start_idx + items_per_page
+                    page_results = results.sort_values("score", ascending=False).iloc[start_idx:end_idx]
+
+                    for i, j in page_results.iterrows():
+                        display_internship_card(j, f"{st.session_state.current_page}_{i}", applied_titles)
+
+                    # Pagination controls at the bottom
                     if total_pages > 1:
+                        st.markdown("---")  # Separator
                         col1, col2, col3 = st.columns([1, 2, 1])
                         with col1:
-                            if st.button("⬅️ Previous", disabled=st.session_state.current_page == 0):
+                            if st.button("⬅️ Previous", disabled=st.session_state.current_page == 0, key="prev_page"):
                                 st.session_state.current_page -= 1
                                 st.rerun()
                         with col2:
                             st.markdown(f"**Page {st.session_state.current_page + 1} of {total_pages}**")
                         with col3:
-                            if st.button("Next ➡️", disabled=st.session_state.current_page >= total_pages - 1):
+                            if st.button("Next ➡️", disabled=st.session_state.current_page >= total_pages - 1, key="next_page"):
                                 st.session_state.current_page += 1
                                 st.rerun()
 
@@ -641,15 +681,6 @@ def main():
                                     if st.button(f"{i+1}", key=f"page_{i}", help=f"Go to page {i+1}"):
                                         st.session_state.current_page = i
                                         st.rerun()
-                    else:
-                        st.session_state.current_page = 0
-
-                    start_idx = st.session_state.current_page * items_per_page
-                    end_idx = start_idx + items_per_page
-                    page_results = results.sort_values("score", ascending=False).iloc[start_idx:end_idx]
-
-                    for i, j in page_results.iterrows():
-                        display_internship_card(j, f"{st.session_state.current_page}_{i}", applied_titles)
 
                     st.markdown("</div>", unsafe_allow_html=True)
                 else:
@@ -722,9 +753,50 @@ def main():
                         if not recommendations.empty:
                             st.success(f"🎉 Found {len(recommendations)} personalized recommendations!")
 
-                            # Display recommendations
-                            for idx, rec in recommendations.iterrows():
-                                display_recommendation_card(rec, idx, applied_titles)
+                            # Pagination for recommendations
+                            rec_items_per_page = 10
+                            rec_total_pages = (len(recommendations) + rec_items_per_page - 1) // rec_items_per_page
+
+                            if 'rec_current_page' not in st.session_state:
+                                st.session_state.rec_current_page = 0
+
+                            # Ensure rec_current_page is within bounds
+                            if st.session_state.rec_current_page >= rec_total_pages:
+                                st.session_state.rec_current_page = rec_total_pages - 1
+                            if st.session_state.rec_current_page < 0:
+                                st.session_state.rec_current_page = 0
+
+                            # Display recommendations for current page
+                            rec_start_idx = st.session_state.rec_current_page * rec_items_per_page
+                            rec_end_idx = rec_start_idx + rec_items_per_page
+                            page_recommendations = recommendations.iloc[rec_start_idx:rec_end_idx]
+
+                            for idx, rec in page_recommendations.iterrows():
+                                display_recommendation_card(rec, f"rec_{st.session_state.rec_current_page}_{idx}", applied_titles)
+
+                            # Pagination controls at the bottom for recommendations
+                            if rec_total_pages > 1:
+                                st.markdown("---")  # Separator
+                                col1, col2, col3 = st.columns([1, 2, 1])
+                                with col1:
+                                    if st.button("⬅️ Previous", disabled=st.session_state.rec_current_page == 0, key="rec_prev_page"):
+                                        st.session_state.rec_current_page -= 1
+                                        st.rerun()
+                                with col2:
+                                    st.markdown(f"**Page {st.session_state.rec_current_page + 1} of {rec_total_pages}**")
+                                with col3:
+                                    if st.button("Next ➡️", disabled=st.session_state.rec_current_page >= rec_total_pages - 1, key="rec_next_page"):
+                                        st.session_state.rec_current_page += 1
+                                        st.rerun()
+
+                                # Page number buttons for recommendations
+                                rec_cols = st.columns(min(10, rec_total_pages))
+                                for i in range(rec_total_pages):
+                                    if i < 10:  # Only show first 10 pages
+                                        with rec_cols[i % len(rec_cols)]:
+                                            if st.button(f"{i+1}", key=f"rec_page_{i}", help=f"Go to page {i+1}"):
+                                                st.session_state.rec_current_page = i
+                                                st.rerun()
                         else:
                             st.info("🤔 No recommendations found. Try adjusting your preferences or upload a resume with more skills.")
 

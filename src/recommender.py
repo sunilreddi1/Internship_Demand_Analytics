@@ -54,17 +54,19 @@ def calculate_content_based_score(user_profile, job_data):
         job_data: Dict with job features
 
     Returns:
-        score: Float between 0-100
+        tuple: (content_score, skill_score) - both floats between 0-100
     """
     score = 0
     max_score = 100
+    skill_score = 0
 
-    # Skills matching (40% weight)
+    # Skills matching (40% weight of content score, but skill_score is pure skill match)
     job_skills = set(job_data.get('skills_required', '').split(', '))
     user_skills = set(user_profile['skills'])
     if job_skills:
-        skill_match = len(user_skills.intersection(job_skills)) / len(job_skills)
-        score += skill_match * 40
+        skill_match_ratio = len(user_skills.intersection(job_skills)) / len(job_skills)
+        skill_score = skill_match_ratio * 100  # Pure skill score 0-100
+        score += skill_match_ratio * 40  # 40% weight in content score
 
     # Location matching (20% weight)
     user_location = user_profile['preferred_location'].lower()
@@ -96,7 +98,7 @@ def calculate_content_based_score(user_profile, job_data):
     elif not user_profile['remote_preference'] and not job_data.get('is_remote', False):
         score += 10
 
-    return min(score, max_score)
+    return min(score, max_score), round(skill_score, 2)
 
 def calculate_collaborative_score(user_id, job_id, applications_df):
     """
@@ -141,8 +143,8 @@ def hybrid_recommendation_engine(user_profile, jobs_df, applications_df=None, to
     recommendations = []
 
     for _, job in jobs_df.iterrows():
-        # Content-based score
-        content_score = calculate_content_based_score(user_profile, job.to_dict())
+        # Content-based score and skill score
+        content_score, skill_score = calculate_content_based_score(user_profile, job.to_dict())
 
         # Collaborative score (if applications data available)
         collab_score = 50  # Default neutral score
@@ -163,6 +165,7 @@ def hybrid_recommendation_engine(user_profile, jobs_df, applications_df=None, to
         job_recommendation = job.copy()
         job_recommendation['recommendation_score'] = round(final_score, 2)
         job_recommendation['content_score'] = round(content_score, 2)
+        job_recommendation['skill_score'] = skill_score  # Pure skill matching score
         job_recommendation['collaborative_score'] = round(collab_score, 2)
 
         recommendations.append(job_recommendation)
