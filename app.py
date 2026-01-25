@@ -95,6 +95,7 @@ def init_db():
                     role TEXT
                 );
                 """)
+                cur.execute("DROP TABLE IF EXISTS applications")
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS applications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -252,7 +253,7 @@ def display_internship_card(job, key_suffix, applied_titles):
                     {"<span class='badge' style='background: linear-gradient(135deg, #10b981, #34d399);'>REMOTE</span>" if job["is_remote"] else ""}
                 </div>
             </div>
-            <p style="margin: 12px 0; color: #64748b;">{job["description"][:200]}...</p>
+            <p class="description">{job["description"][:200]}...</p>
             <div style="display: flex; gap: 8px; margin-top: 12px;">
                 {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
             </div>
@@ -450,6 +451,13 @@ def main():
 
     .sub {{
         color: {sub} !important;
+    }}
+
+    .description {{
+        margin: 12px 0;
+        color: #64748b;
+        white-space: normal;
+        word-wrap: break-word;
     }}
 
     .badge {{
