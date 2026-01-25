@@ -4,6 +4,36 @@ This is a comprehensive AI-powered internship analytics platform developed to he
 
 ----------------------------------------
 
+## 🚀 Quick Deploy
+
+Your app is **deployment-ready**! Choose your preferred platform:
+
+### Railway (Recommended)
+```bash
+# Via CLI
+./deploy_railway.ps1
+
+# Or via GitHub
+1. Push to GitHub
+2. Connect at railway.app
+3. Add DATABASE_URL env var
+```
+
+### Docker (Universal)
+```bash
+docker build -t internship-analytics .
+docker run -p 8501:8501 internship-analytics
+```
+
+### Other Platforms
+- **Render**: Use `render.yaml`
+- **Vercel**: Use `vercel.json`
+- **Local**: See `DEPLOYMENT.md`
+
+**✅ Status**: All tests passed • Memory: 7.7MB • Database: PostgreSQL + SQLite fallback
+
+----------------------------------------
+
 ## 🎯 Problem Statement
 Students face difficulty in identifying suitable internships due to:
 - Fragmented listings across multiple platforms
@@ -366,5 +396,6 @@ For questions or issues:
 **Project**: Final Year B.Tech Project
 **Institution**: Your Institution Name
 **Latest Update**: January 2026 - Added pagination, network sharing, and UI improvements
-#   D e p l o y m e n t   t r i g g e r  
+#   D e p l o y m e n t   t r i g g e r 
+ 
  

@@ -1,7 +1,10 @@
 [server]
-headless = false
-port = 8505
-address = "localhost"
+headless = true
+port = 8501
+address = "0.0.0.0"
+
+[browser]
+gatherUsageStats = false
 
 [theme]
 primaryColor = "#2563eb"

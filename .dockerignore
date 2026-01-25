@@ -1,0 +1,67 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Virtual environments
+venv/
+.env
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.db
+users.db
+eda_visualizations.png
+*.bat
+*.ps1
+*.vbs
+create_shortcut.vbs
+run_app.bat
+run_app.ps1
+start_app.bat
+start_app.ps1
+add_certificate_admin.ps1
+add_certificate.bat
+browser_setup.bat
+install_cert.bat
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
