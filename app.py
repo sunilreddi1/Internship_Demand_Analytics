@@ -30,6 +30,9 @@ def calculate_skill_score_only(row, user_skills):
     matched_skills = len(set(user_skills).intersection(job_skills))
     return (matched_skills / len(job_skills)) * 100
 
+def current_user():
+    return st.session_state.user.strip().lower()
+
 # ================= DATABASE =================
 # ================= DATABASE =================
 def db():
@@ -50,7 +53,7 @@ def db():
                         conn.execute(text("SELECT 1"))
                     return engine
             except Exception as e:
-                print(f"PostgreSQL connection failed, falling back to SQLite: {e}")
+                # Suppress verbose PostgreSQL errors - we expect this to fail and fall back to SQLite
                 pass  # Fall through to SQLite
     except:
         pass  # Not in Streamlit context
@@ -256,9 +259,17 @@ def display_internship_card(job, key_suffix, applied_titles):
                 </div>
             </div>
             <p style="margin: 12px 0; color: #64748b; white-space: normal; word-wrap: break-word; line-height: 1.5; font-size: 14px;">{job["description"][:500]}...</p>
-            <div style="display: flex; gap: 8px; margin-top: 12px;">
-                {f'<span class="badge" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">Skills: {job.get("skill_score", 0)}%</span>' if job.get("skill_score", 0) > 0 else ""}
-                {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
+            <div style="margin-top: 12px;">
+                {f'''
+                <div style="margin-bottom: 8px;">
+                    <strong style="color: #374151; font-size: 12px;">Required Skills:</strong><br>
+                    {"".join([f'<span class="skill-badge">{skill.strip()}</span>' for skill in str(job.get("skills_required", "")).split(", ") if skill.strip()])}
+                </div>
+                ''' if job.get("skills_required") and str(job.get("skills_required")).strip() else ""}
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    {f'<span class="badge" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">Skills: {job.get("skill_score", 0)}%</span>' if job.get("skill_score", 0) > 0 else ""}
+                    {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
+                </div>
             </div>
         </div>
         """)
@@ -430,9 +441,6 @@ def main():
         if k not in st.session_state:
             st.session_state[k] = v
 
-    def current_user():
-        return st.session_state.user.strip().lower()
-
     # ================= THEME =================
     bg = "#020617" if st.session_state.dark else "#f1f5f9"
     card = "rgba(15,23,42,0.75)" if st.session_state.dark else "rgba(255,255,255,0.95)"
@@ -471,11 +479,15 @@ def main():
         transition: transform .25s ease, box-shadow .25s ease;
         min-height: 200px;
         width: 100%;
+        border: 2px solid transparent;
+        background: linear-gradient(135deg, {card}, {card}) padding-box,
+                    linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box;
     }}
 
     .card:hover {{
         transform: translateY(-6px);
         box-shadow: 0 26px 55px rgba(0,0,0,0.35);
+        border-color: #667eea;
     }}
 
     @keyframes fadeInUp {{
@@ -494,6 +506,10 @@ def main():
         font-weight: 700;
         letter-spacing: normal !important;
         text-align: left;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }}
 
     .sub {{
@@ -508,12 +524,24 @@ def main():
     }}
 
     .badge {{
-        background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+        background: linear-gradient(135deg, #f59e0b, #f97316);
         color: white;
         padding: 6px 14px;
         border-radius: 999px;
         font-size: 12px;
         margin-left: 6px;
+        box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+    }}
+
+    .skill-badge {{
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin: 2px;
+        display: inline-block;
+        box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
     }}
 
     /* Streamlit button targeting */
@@ -523,11 +551,118 @@ def main():
         border-radius: 14px !important;
         font-weight: 600 !important;
         border: none !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important;
     }}
 
     .stButton>button:hover, button:hover {{
-        transform: translateY(-1px);
+        transform: translateY(-2px);
         box-shadow: 0 8px 18px rgba(37,99,235,0.45) !important;
+        background: linear-gradient(135deg,#1d4ed8,#0ea5e9) !important;
+    }}
+
+    /* Secondary buttons (like back button) */
+    button[kind="secondary"] {{
+        background: linear-gradient(135deg,#6b7280,#9ca3af) !important;
+        box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3) !important;
+    }}
+
+    button[kind="secondary"]:hover {{
+        background: linear-gradient(135deg,#4b5563,#6b7280) !important;
+        box-shadow: 0 6px 16px rgba(107, 114, 128, 0.4) !important;
+    }}
+
+    /* Success buttons */
+    button[kind="primary"] {{
+        background: linear-gradient(135deg,#10b981,#059669) !important;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+    }}
+
+    button[kind="primary"]:hover {{
+        background: linear-gradient(135deg,#059669,#047857) !important;
+        box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4) !important;
+    }}
+
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 8px;
+        background: rgba(255,255,255,0.05);
+        padding: 8px;
+        border-radius: 12px;
+    }}
+
+    .stTabs [data-baseweb="tab"] {{
+        background: transparent;
+        border-radius: 8px;
+        color: {text};
+        transition: all 0.3s ease;
+    }}
+
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
+        background: linear-gradient(135deg,#667eea,#764ba2) !important;
+        color: white !important;
+    }}
+
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {{
+        background: linear-gradient(180deg, {card}, rgba(102, 126, 234, 0.1)) !important;
+        border-right: 3px solid #667eea;
+    }}
+
+    /* Progress bars */
+    .stProgress > div > div > div > div {{
+        background: linear-gradient(90deg, #667eea, #764ba2) !important;
+    }}
+
+    /* Input fields */
+    .stTextInput input, .stSelectbox select {{
+        border-radius: 12px !important;
+        border: 2px solid #e5e7eb !important;
+        transition: border-color 0.3s ease !important;
+    }}
+
+    .stTextInput input:focus, .stSelectbox select:focus {{
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+    }}
+
+    /* File uploader */
+    .stFileUploader {{
+        border: 2px dashed #667eea !important;
+        border-radius: 12px !important;
+        background: rgba(102, 126, 234, 0.05) !important;
+    }}
+
+    /* Success messages */
+    .stSuccess {{
+        background: linear-gradient(135deg, #10b981, #059669) !important;
+        color: white !important;
+        border-radius: 12px !important;
+        border: none !important;
+    }}
+
+    /* Error messages */
+    .stError {{
+        background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+        color: white !important;
+        border-radius: 12px !important;
+        border: none !important;
+    }}
+
+    /* Info messages */
+    .stInfo {{
+        background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+        color: white !important;
+        border-radius: 12px !important;
+        border: none !important;
+    }}
+
+    /* Warning messages */
+    .stWarning {{
+        background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+        color: white !important;
+        border-radius: 12px !important;
+        border: none !important;
     }}
 
     /* Ensure main container backgrounds are transparent so .card shows through */
@@ -608,6 +743,20 @@ def main():
 
             tab1, tab2, tab3 = st.tabs(["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications"])
 
+            # Colorful welcome header
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        padding: 20px; 
+                        border-radius: 15px; 
+                        margin-bottom: 20px; 
+                        text-align: center; 
+                        color: white; 
+                        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);">
+                <h1 style="margin: 0; font-size: 2.5em; font-weight: 700;">🎓 Welcome to Internship Portal</h1>
+                <p style="margin: 10px 0 0 0; font-size: 1.2em; opacity: 0.9;">Find your perfect internship match with AI-powered recommendations</p>
+            </div>
+            """, unsafe_allow_html=True)
+
             with tab1:
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
 
@@ -685,8 +834,11 @@ def main():
                 # Show top internships
                 results = results.sort_values("score", ascending=False)
 
-                if st.button("🔎 Find Internships") or st.session_state.search_performed:
-                    if st.button("🔎 Find Internships"):
+                # Handle search button click
+                search_clicked = st.button("🔎 Find Internships", key="search_button")
+
+                if search_clicked or st.session_state.search_performed:
+                    if search_clicked:
                         # New search - perform the search and store results
                         st.session_state.search_performed = True
                         st.session_state.current_page = 0
@@ -784,9 +936,17 @@ def main():
                     st.markdown("<h3>🔍 Enter skills and click 'Find Internships' to search</h3>", unsafe_allow_html=True)
 
             with tab2:
+                # Back button for recommendations
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("⬅️ Back to Search", type="secondary", use_container_width=True):
+                        # Switch to search tab (tab1)
+                        st.rerun()  # This will refresh and user can click the search tab
+                with col2:
+                    st.markdown("### 🤖 AI-Powered Recommendations")
+                    st.caption("Get personalized internship matches based on your skills and preferences")
+
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
-                st.markdown("### 🤖 AI-Powered Recommendations")
-                st.markdown("Get personalized internship matches based on your skills, preferences, and application history.")
 
                 # User preferences form
                 col1, col2 = st.columns(2)
@@ -900,6 +1060,16 @@ def main():
                 st.markdown("</div>", unsafe_allow_html=True)
 
             with tab3:
+                # Back button for applications
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("⬅️ Back to Search", type="secondary", use_container_width=True):
+                        # Switch to search tab (tab1)
+                        st.rerun()  # This will refresh and user can click the search tab
+                with col2:
+                    st.markdown("### 📋 My Applications")
+                    st.caption("Track all your internship applications")
+
                 st.markdown("<div class='card'>", unsafe_allow_html=True)
                 try:
                     engine = db()

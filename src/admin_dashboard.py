@@ -33,7 +33,14 @@ def db():
     return create_engine("sqlite:///users.db")
 
 def show_admin_dashboard():
-    st.title("📊 Admin Dashboard – Internship Analytics")
+    # Back button to return to main dashboard
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("⬅️ Back to Main", type="secondary", use_container_width=True):
+            st.session_state.page = "main"
+            st.rerun()
+    with col2:
+        st.title("📊 Admin Dashboard – Internship Analytics")
 
     # Load and preprocess data
     df = preprocess_data()
