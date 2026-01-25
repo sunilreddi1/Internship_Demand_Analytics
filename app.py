@@ -425,6 +425,15 @@ def main():
         initial_sidebar_state="expanded"
     )
 
+    # ================= WELCOME BANNER =================
+    with st.container():
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; padding: 3rem; text-align: center; margin-bottom: 2rem; color: white; width: 100%;">
+            <h1 style="font-size: 3rem; margin-bottom: 1rem; font-weight: 700;">Welcome to Internship Portal</h1>
+            <p style="font-size: 1.2rem; margin: 0; opacity: 0.9;">Find your perfect internship match with AI-powered recommendations</p>
+        </div>
+        """, unsafe_allow_html=True)
+
     # Set default server port to 8502
     import os
     os.environ['STREAMLIT_SERVER_PORT'] = '8502'
@@ -939,7 +948,7 @@ def main():
                 # Back button for recommendations
                 col1, col2 = st.columns([1, 4])
                 with col1:
-                    if st.button("⬅️ Back to Search", type="secondary", use_container_width=True):
+                    if st.button("⬅️ Back to Search", type="secondary", use_container_width=True, key="back_to_search_from_recommendations"):
                         # Switch to search tab (tab1)
                         st.rerun()  # This will refresh and user can click the search tab
                 with col2:
@@ -1063,7 +1072,7 @@ def main():
                 # Back button for applications
                 col1, col2 = st.columns([1, 4])
                 with col1:
-                    if st.button("⬅️ Back to Search", type="secondary", use_container_width=True):
+                    if st.button("⬅️ Back to Search", type="secondary", use_container_width=True, key="back_to_search_from_applications"):
                         # Switch to search tab (tab1)
                         st.rerun()  # This will refresh and user can click the search tab
                 with col2:
