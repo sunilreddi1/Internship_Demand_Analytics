@@ -113,7 +113,7 @@ def init_db():
         print(f"Database initialization failed: {e}")
 
 # Database already initialized
-# init_db()
+init_db()
 
 # ================= PASSWORD =================
 def strong_password(p):
