@@ -366,3 +366,5 @@ For questions or issues:
 **Project**: Final Year B.Tech Project
 **Institution**: Your Institution Name
 **Latest Update**: January 2026 - Added pagination, network sharing, and UI improvements
+#   D e p l o y m e n t   t r i g g e r  
+ 
