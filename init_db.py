@@ -32,6 +32,31 @@ def init_db():
                 );
                 """))
 
+                # SEARCH_HISTORY TABLE
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT,
+                    skill TEXT,
+                    city TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """))
+
+                # RECOMMENDATION_HISTORY TABLE
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS recommendation_history (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT,
+                    pref_location TEXT,
+                    pref_domain TEXT,
+                    min_stipend INTEGER,
+                    remote_pref BOOLEAN,
+                    experience_level TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """))
+
                 conn.commit()
             print("✅ PostgreSQL database initialized successfully")
             return
@@ -62,6 +87,31 @@ def init_db():
             company TEXT,
             location TEXT,
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """))
+
+        # SEARCH_HISTORY TABLE
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            skill TEXT,
+            city TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """))
+
+        # RECOMMENDATION_HISTORY TABLE
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS recommendation_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            pref_location TEXT,
+            pref_domain TEXT,
+            min_stipend INTEGER,
+            remote_pref BOOLEAN,
+            experience_level TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """))
 

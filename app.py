@@ -752,7 +752,7 @@ def main():
             from src.recommender import get_personalized_recommendations
 
             # Navigation using radio buttons for programmatic control
-            tab_options = ["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications"]
+            tab_options = ["🔎 Smart Search", "🎯 AI Recommendations", "📋 My Applications", "📊 My History"]
             active_tab = st.radio("Navigation", tab_options, index=st.session_state.active_tab, horizontal=True, label_visibility="collapsed")
 
             # Update session state when user changes tab
@@ -843,6 +843,26 @@ def main():
                         # New search - perform the search and store results
                         st.session_state.search_performed = True
                         st.session_state.current_page = 0
+
+                        # Store search history
+                        try:
+                            engine = db()
+                            if 'postgresql' in str(engine.url):
+                                with engine.connect() as conn:
+                                    conn.execute(text("""
+                                        INSERT INTO search_history (username, skill, city)
+                                        VALUES (:username, :skill, :city)
+                                    """), {"username": current_user(), "skill": skill, "city": city})
+                                    conn.commit()
+                            else:
+                                with engine.connect() as conn:
+                                    conn.execute(text("""
+                                        INSERT INTO search_history (username, skill, city)
+                                        VALUES (:username, :skill, :city)
+                                    """), {"username": current_user(), "skill": skill, "city": city})
+                                    conn.commit()
+                        except:
+                            pass  # Ignore if db fails
 
                         # Perform the search
                         keywords = [k.strip().lower() for k in skill.split(",") if k.strip()]
@@ -993,6 +1013,40 @@ def main():
                     user_apps = pd.DataFrame()
 
                 if st.button("🎯 Get AI Recommendations", type="primary"):
+                    # Store recommendation history
+                    try:
+                        engine = db()
+                        if 'postgresql' in str(engine.url):
+                            with engine.connect() as conn:
+                                conn.execute(text("""
+                                    INSERT INTO recommendation_history (username, pref_location, pref_domain, min_stipend, remote_pref, experience_level)
+                                    VALUES (:username, :pref_location, :pref_domain, :min_stipend, :remote_pref, :experience_level)
+                                """), {
+                                    "username": current_user(),
+                                    "pref_location": pref_location,
+                                    "pref_domain": pref_domain,
+                                    "min_stipend": min_stipend,
+                                    "remote_pref": remote_pref,
+                                    "experience_level": experience_level
+                                })
+                                conn.commit()
+                        else:
+                            with engine.connect() as conn:
+                                conn.execute(text("""
+                                    INSERT INTO recommendation_history (username, pref_location, pref_domain, min_stipend, remote_pref, experience_level)
+                                    VALUES (:username, :pref_location, :pref_domain, :min_stipend, :remote_pref, :experience_level)
+                                """), {
+                                    "username": current_user(),
+                                    "pref_location": pref_location,
+                                    "pref_domain": pref_domain,
+                                    "min_stipend": min_stipend,
+                                    "remote_pref": remote_pref,
+                                    "experience_level": experience_level
+                                })
+                                conn.commit()
+                    except:
+                        pass  # Ignore if db fails
+
                     with st.spinner("🤖 Analyzing your profile and finding best matches..."):
                         # Create user profile
                         user_preferences = {
@@ -1147,6 +1201,76 @@ def main():
                             st.metric("Last Application", latest_app.strftime('%Y-%m-%d'))
                 else:
                     st.info("📝 You haven't applied to any internships yet. Start exploring opportunities!")
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            elif active_tab == "📊 My History":
+                # Back button for history
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("⬅️ Back to Search", type="secondary", use_container_width=True, key="back_to_search_from_history"):
+                        # Switch to search tab
+                        st.session_state.active_tab = 0
+                        st.rerun()
+                with col2:
+                    st.markdown("### 📊 My History")
+                    st.caption("View your past searches and recommendation requests")
+
+                st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+                # Search History
+                st.markdown("#### 🔍 Search History")
+                try:
+                    engine = db()
+                    if 'postgresql' in str(engine.url):
+                        search_history = pd.read_sql("""
+                            SELECT skill, city, timestamp
+                            FROM search_history
+                            WHERE LOWER(username)=%(username)s
+                            ORDER BY timestamp DESC
+                        """, engine, params={'username': current_user()})
+                    else:
+                        search_history = pd.read_sql_query("""
+                            SELECT skill, city, timestamp
+                            FROM search_history
+                            WHERE LOWER(username)=LOWER(?)
+                            ORDER BY timestamp DESC
+                        """, engine, params=(current_user(),))
+                except:
+                    search_history = pd.DataFrame()
+
+                if not search_history.empty:
+                    st.dataframe(search_history, width='stretch')
+                else:
+                    st.info("No search history found.")
+
+                st.markdown("---")
+
+                # Recommendation History
+                st.markdown("#### 🎯 Recommendation History")
+                try:
+                    engine = db()
+                    if 'postgresql' in str(engine.url):
+                        rec_history = pd.read_sql("""
+                            SELECT pref_location, pref_domain, min_stipend, remote_pref, experience_level, timestamp
+                            FROM recommendation_history
+                            WHERE LOWER(username)=%(username)s
+                            ORDER BY timestamp DESC
+                        """, engine, params={'username': current_user()})
+                    else:
+                        rec_history = pd.read_sql_query("""
+                            SELECT pref_location, pref_domain, min_stipend, remote_pref, experience_level, timestamp
+                            FROM recommendation_history
+                            WHERE LOWER(username)=LOWER(?)
+                            ORDER BY timestamp DESC
+                        """, engine, params=(current_user(),))
+                except:
+                    rec_history = pd.DataFrame()
+
+                if not rec_history.empty:
+                    st.dataframe(rec_history, width='stretch')
+                else:
+                    st.info("No recommendation history found.")
 
                 st.markdown("</div>", unsafe_allow_html=True)
 
