@@ -38,17 +38,24 @@ docker run -p 8501:8501 internship-analytics
 # Deploy to any Docker host (Heroku, DigitalOcean, etc.)
 ```
 
-### 4. **Local with Public Access**
+### 4. **Local Development** (Current Setup)
 ```bash
-# Install ngrok
-# Run app
+# Your app runs on: http://localhost:8501
 streamlit run app.py
 
-# In another terminal
-ngrok http 8501
+# For public access with ngrok:
+# 1. Install ngrok: https://ngrok.com/download
+# 2. Run: ngrok http 8501
+# 3. Share the ngrok URL
 ```
 
-## 🔧 Environment Variables
+## 🔧 Configuration Files
+
+- **`config.toml`** - Local development (localhost:8501)
+- **`config.prod.toml`** - Production deployment (0.0.0.0 for cloud)
+- **`secrets.toml`** - Database credentials (keep secure!)
+
+## 🔑 Environment Variables
 
 Add these to your deployment platform:
 
