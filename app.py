@@ -1012,6 +1012,27 @@ def main():
                         if not recommendations.empty:
                             st.success(f"🎉 Found {len(recommendations)} personalized recommendations!")
 
+                            # Get applied titles for recommendations
+                            try:
+                                engine = db()
+                                if 'postgresql' in str(engine.url):
+                                    applied_jobs = pd.read_sql("""
+                                        SELECT DISTINCT job_title
+                                        FROM applications
+                                        WHERE LOWER(username)=%(username)s
+                                    """, engine, params={'username': current_user()})
+                                else:
+                                    applied_jobs = pd.read_sql_query("""
+                                        SELECT DISTINCT job_title
+                                        FROM applications
+                                        WHERE LOWER(username)=LOWER(?)
+                                    """, engine, params=(current_user(),))
+
+                                applied_titles = applied_jobs['job_title'].str.lower().tolist() if not applied_jobs.empty else []
+                                st.session_state.applied_titles_cache = applied_titles
+                            except:
+                                applied_titles = st.session_state.applied_titles_cache if 'applied_titles_cache' in st.session_state else []
+
                             # Pagination for recommendations
                             rec_items_per_page = 10
                             rec_total_pages = (len(recommendations) + rec_items_per_page - 1) // rec_items_per_page
