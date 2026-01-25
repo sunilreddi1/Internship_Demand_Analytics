@@ -32,6 +32,26 @@ docker run -p 8501:8501 internship-analytics
 
 **✅ Status**: All tests passed • Memory: 7.7MB • Database: PostgreSQL + SQLite fallback
 
+## 🖥️ Local Development
+
+### Quick Local Run
+```powershell
+# Start the app locally on port 8503
+.\run_app.ps1
+```
+App will be available at: http://localhost:8503
+
+### Public Access (Share with Others)
+```powershell
+# Start app with public URL using ngrok
+.\start_app.ps1
+```
+This automatically starts both Streamlit and ngrok for public sharing. See `PUBLIC_ACCESS_GUIDE.md` for detailed instructions.
+
+### Manual Setup
+1. Ensure Python environment is activated
+2. Run: `streamlit run app.py --server.port 8503 --server.address localhost`
+
 ----------------------------------------
 
 ## 🎯 Problem Statement
