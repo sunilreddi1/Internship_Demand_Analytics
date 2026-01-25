@@ -95,7 +95,6 @@ def init_db():
                     role TEXT
                 );
                 """)
-                cur.execute("DROP TABLE IF EXISTS applications")
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS applications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -291,7 +290,7 @@ def display_internship_card(job, key_suffix, applied_titles):
                             })
                             conn.commit()
 
-                    st.success("Application submitted!")
+                    st.success("Applied successfully!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Application failed: {e}")
@@ -357,7 +356,7 @@ def display_recommendation_card(rec, idx, applied_titles):
                             })
                             conn.commit()
 
-                    st.success("Application submitted!")
+                    st.success("Applied successfully!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Application failed: {e}")
