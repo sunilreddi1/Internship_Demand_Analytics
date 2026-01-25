@@ -16,12 +16,6 @@ def preprocess_data():
     # Load data in chunks and sample to reduce memory usage
     df = pd.read_csv(csv_path, usecols=essential_columns)
 
-    # Sample a subset of data to reduce memory (keep top opportunities)
-    if len(df) > 5000:  # Limit to 5000 internships for deployment
-        # Sort by demand_score and stipend to keep best opportunities
-        df = df.sort_values(['demand_score', 'stipend'], ascending=[False, False])
-        df = df.head(5000).reset_index(drop=True)
-
     # Optimize data types to reduce memory
     df['stipend'] = df['stipend'].astype('int32')
     df['is_remote'] = df['is_remote'].astype('int8')
