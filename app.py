@@ -244,15 +244,15 @@ def display_internship_card(job, key_suffix, applied_titles):
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                    <h3 class="title">{job["title"][:50]}</h3>
-                    <p class="sub">{job["company"]} • {job["location"]}</p>
+                    <h3 style="font-size: 22px; font-weight: 700; letter-spacing: normal; text-align: left; margin: 0;">{job["title"][:50]}</h3>
+                    <p style="color: #64748b; margin: 4px 0; font-size: 14px;">{job["company"]} • {job["location"]}</p>
                 </div>
                 <div style="text-align: right;">
                     <span class="badge">₹{job["stipend"]:,}</span>
                     {"<span class='badge' style='background: linear-gradient(135deg, #10b981, #34d399);'>REMOTE</span>" if job["is_remote"] else ""}
                 </div>
             </div>
-            <p class="description">{job["description"][:500]}...</p>
+            <p style="margin: 12px 0; color: #64748b; white-space: normal; word-wrap: break-word; line-height: 1.5; font-size: 14px;">{job["description"][:500]}...</p>
             <div style="display: flex; gap: 8px; margin-top: 12px;">
                 {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
             </div>
@@ -309,15 +309,15 @@ def display_recommendation_card(rec, idx, applied_titles):
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                    <h3 class="title">{rec["title"]}</h3>
-                    <p class="sub">{rec["company"]} • {rec["location"]}</p>
+                    <h3 style="font-size: 22px; font-weight: 700; letter-spacing: normal; text-align: left; margin: 0;">{rec["title"][:50]}</h3>
+                    <p style="color: #64748b; margin: 4px 0; font-size: 14px;">{rec["company"]} • {rec["location"]}</p>
                 </div>
                 <div style="text-align: right;">
                     <span class="badge">₹{rec["stipend"]:,}</span>
                     {"<span class='badge' style='background: linear-gradient(135deg, #10b981, #34d399);'>REMOTE</span>" if rec["is_remote"] else ""}
                 </div>
             </div>
-            <p class="description">{rec["description"][:500]}...</p>
+            <p style="margin: 12px 0; color: #64748b; white-space: normal; word-wrap: break-word; line-height: 1.5; font-size: 14px;">{rec["description"][:500]}...</p>
             <div style="display: flex; gap: 8px; margin-top: 12px;">
                 <span class="badge" style="background: linear-gradient(135deg, #8b5cf6, #a78bfa);">AI Match</span>
                 {"<span class='badge' style='background: linear-gradient(135deg, #f59e0b, #fbbf24);'>APPLIED</span>" if already_applied else ""}
